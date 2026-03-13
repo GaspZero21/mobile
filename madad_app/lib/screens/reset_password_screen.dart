@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
-import 'login_screen.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
   const ResetPasswordScreen({super.key});
@@ -17,151 +16,209 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: kSand,
-      appBar: AppBar(
-        backgroundColor: kSand,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: kTeal),
-          onPressed: () => Navigator.pop(context),
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom),
+        decoration: const BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(30),
+            topRight: Radius.circular(30),
+          ),
         ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 20),
-            const Text(
-              'Reset Password',
-              style: TextStyle(
-                fontSize: 28, fontWeight: FontWeight.bold, color: kTeal),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Set the new password for your account.',
-              style: TextStyle(fontSize: 14, color: kSage),
-            ),
-            const SizedBox(height: 32),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
 
-            // ── NEW PASSWORD
-            TextField(
-              controller: _passwordController,
-              obscureText: !_passwordVisible,
-              decoration: InputDecoration(
-                labelText: 'Password',
-                labelStyle: const TextStyle(color: kSage),
-                prefixIcon: const Icon(Icons.lock_outline, color: kSage),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _passwordVisible ? Icons.visibility : Icons.visibility_off,
-                    color: kSage,
-                  ),
-                  onPressed: () =>
-                      setState(() => _passwordVisible = !_passwordVisible),
-                ),
-                filled: true,
-                fillColor: kWhite,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: kTeal, width: 1.5),
+              Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: kSage,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-            ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 20),
 
-            // ── CONFIRM PASSWORD
-            TextField(
-              controller: _confirmPassController,
-              obscureText: !_confirmPassVisible,
-              decoration: InputDecoration(
-                labelText: 'Confirm Your Password',
-                labelStyle: const TextStyle(color: kSage),
-                prefixIcon: const Icon(Icons.lock_outline, color: kSage),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _confirmPassVisible
-                        ? Icons.visibility
-                        : Icons.visibility_off,
-                    color: kSage,
-                  ),
-                  onPressed: () => setState(
-                      () => _confirmPassVisible = !_confirmPassVisible),
-                ),
-                filled: true,
-                fillColor: kWhite,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: kTeal, width: 1.5),
+              const Text(
+                'Reset Password',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: kTeal,
                 ),
               ),
-            ),
 
-            const SizedBox(height: 32),
+              const SizedBox(height: 8),
 
-            // ── CONTINUE BUTTON
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: kTeal,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
+              const Text(
+                'Set The New Password For Your Account',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: kSage),
+              ),
+
+              const SizedBox(height: 24),
+
+              TextField(
+                controller: _passwordController,
+                obscureText: !_passwordVisible,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  labelStyle: const TextStyle(color: kSage, fontSize: 14),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _passwordVisible
+                          ? Icons.visibility
+                          : Icons.lock_outline,
+                      color: kSage, size: 20,
+                    ),
+                    onPressed: () => setState(
+                        () => _passwordVisible = !_passwordVisible),
                   ),
-                ),
-                onPressed: _onReset,
-                child: const Text(
-                  'Continue',
-                  style: TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.bold, color: kWhite),
+                  enabledBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: kSage),
+                  ),
+                  focusedBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: kTeal, width: 1.5),
+                  ),
+                  filled: false,
                 ),
               ),
-            ),
-          ],
+
+              const SizedBox(height: 20),
+
+              TextField(
+                controller: _confirmPassController,
+                obscureText: !_confirmPassVisible,
+                decoration: InputDecoration(
+                  labelText: 'Confirm Your Password',
+                  labelStyle: const TextStyle(color: kSage, fontSize: 14),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _confirmPassVisible
+                          ? Icons.visibility
+                          : Icons.lock_outline,
+                      color: kSage, size: 20,
+                    ),
+                    onPressed: () => setState(
+                        () => _confirmPassVisible = !_confirmPassVisible),
+                  ),
+                  enabledBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: kSage),
+                  ),
+                  focusedBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: kTeal, width: 1.5),
+                  ),
+                  filled: false,
+                ),
+              ),
+
+              const SizedBox(height: 28),
+
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kTerra,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                  onPressed: _onContinue,
+                  child: const Text(
+                    'Continue',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: kWhite,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 10),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  void _onReset() {
-    // Show success dialog
-    showDialog(
+  void _onContinue() {
+    showModalBottomSheet(
       context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: Column(
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _buildSuccessSheet(
+        message: 'Your Password Has Been Reset\nSuccessfully!',
+        onDone: () {
+          Navigator.popUntil(context, (route) => route.isFirst);
+        },
+      ),
+    );
+  }
+
+  Widget _buildSuccessSheet({
+    required String message,
+    required VoidCallback onDone,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+        decoration: const BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(30),
+            topRight: Radius.circular(30),
+          ),
+        ),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.check_circle, color: kTeal, size: 64),
-            const SizedBox(height: 16),
-            const Text(
-              'Your Password Has Been Reset Successfully!',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16, fontWeight: FontWeight.bold, color: kTeal),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: kTeal),
-              onPressed: () => Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-                (route) => false, // clears all previous screens
+            Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(
+                color: kSage,
+                borderRadius: BorderRadius.circular(2),
               ),
-              child: const Text('Back to Login',
-                  style: TextStyle(color: kWhite)),
             ),
+
+            const SizedBox(height: 30),
+
+            Container(
+              width: 80, height: 80,
+              decoration: const BoxDecoration(
+                color: Color(0xFF2AE523),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.check,
+                color: kWhite,
+                size: 45,
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: kTeal,
+                height: 1.5,
+              ),
+            ),
+
+            const SizedBox(height: 30),
           ],
         ),
       ),

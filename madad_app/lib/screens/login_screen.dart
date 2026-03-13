@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
-import 'register_screen.dart';
-import 'forgot_password_screen.dart'; // we will create this next
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -11,7 +10,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-
   final _emailController    = TextEditingController();
   final _passwordController = TextEditingController();
   bool _passwordVisible     = false;
@@ -19,184 +17,168 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kSand,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+      backgroundColor: kSage,
+      body: Column(
+        children: [
 
-              const SizedBox(height: 40),
-
-              // ── LOGO
-              Center(
-                child: Container(
-                  width: 80, height: 80,
-                  decoration: BoxDecoration(
-                    color: kTeal,
-                    borderRadius: BorderRadius.circular(40),
-                  ),
-                  child: const Icon(Icons.eco, color: kWhite, size: 40),
-                ),
-              ),
-
-              const SizedBox(height: 32),
-
-              // ── TITLE
-              const Text(
-                'Welcome Back !',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: kTeal,
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              const Text(
-                'Sign in to continue',
-                style: TextStyle(fontSize: 14, color: kSage),
-              ),
-
-              const SizedBox(height: 32),
-
-              // ── EMAIL / PHONE
-              TextField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: InputDecoration(
-                  labelText: 'E-Mail Or Phone Number',
-                  labelStyle: const TextStyle(color: kSage),
-                  prefixIcon: const Icon(Icons.person_outline, color: kSage),
-                  filled: true,
-                  fillColor: kWhite,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: kTeal, width: 1.5),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // ── PASSWORD
-              TextField(
-                controller: _passwordController,
-                obscureText: !_passwordVisible,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  labelStyle: const TextStyle(color: kSage),
-                  prefixIcon: const Icon(Icons.lock_outline, color: kSage),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _passwordVisible
-                          ? Icons.visibility
-                          : Icons.visibility_off,
-                      color: kSage,
-                    ),
-                    onPressed: () => setState(
-                        () => _passwordVisible = !_passwordVisible),
-                  ),
-                  filled: true,
-                  fillColor: kWhite,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: kTeal, width: 1.5),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // ── FORGOT PASSWORD
-              Align(
-                alignment: Alignment.centerRight,
-                child: GestureDetector(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const ForgotPasswordScreen()),
-                  ),
-                  child: const Text(
-                    'Forgot Password ?',
+          // ── TOP SECTION (sage background with title)
+          Expanded(
+            flex: 4,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 80, 24, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text(
+                    'Welcome Back !',
                     style: TextStyle(
-                      color: kTerra,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 32),
-
-              // ── SIGN IN BUTTON
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kTeal,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                  ),
-                  onPressed: _onSignIn,
-                  child: const Text(
-                    'Sign In',
-                    style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 28,
                       fontWeight: FontWeight.bold,
-                      color: kWhite,
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // ── DON'T HAVE ACCOUNT
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text(
-                    "Don't have an account? ",
-                    style: TextStyle(color: kSage),
-                  ),
-                  GestureDetector(
-                    onTap: () => Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const RegisterScreen()),
-                    ),
-                    child: const Text(
-                      'Sign Up',
-                      style: TextStyle(
-                        color: kTerra,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      color: kTeal,
                     ),
                   ),
                 ],
               ),
-            ],
+            ),
           ),
-        ),
+
+          // ── BOTTOM SHEET (white rounded)
+          Expanded(
+            flex: 6,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(24, 32, 24, 0),
+              decoration: const BoxDecoration(
+                color: kSand,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(30),
+                  topRight: Radius.circular(30),
+                ),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+
+                    // ── EMAIL
+                    TextField(
+                      controller: _emailController,
+                      decoration: const InputDecoration(
+                        labelText: 'E-Mail Or Phone Number',
+                        labelStyle: TextStyle(color: kSage, fontSize: 14),
+                        enabledBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(color: kSage),
+                        ),
+                        focusedBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(color: kTeal, width: 1.5),
+                        ),
+                        filled: false,
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // ── PASSWORD
+                    TextField(
+                      controller: _passwordController,
+                      obscureText: !_passwordVisible,
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        labelStyle: const TextStyle(
+                            color: kSage, fontSize: 14),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _passwordVisible
+                                ? Icons.visibility
+                                : Icons.lock_outline,
+                            color: kSage, size: 20,
+                          ),
+                          onPressed: () => setState(
+                              () => _passwordVisible = !_passwordVisible),
+                        ),
+                        enabledBorder: const UnderlineInputBorder(
+                          borderSide: BorderSide(color: kSage),
+                        ),
+                        focusedBorder: const UnderlineInputBorder(
+                          borderSide: BorderSide(color: kTeal, width: 1.5),
+                        ),
+                        filled: false,
+                      ),
+                    ),
+
+                    const SizedBox(height: 36),
+
+                    // ── SIGN IN BUTTON
+                    Center(
+                      child: SizedBox(
+                        width: 200, height: 52,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: kTeal,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                          ),
+                          onPressed: _onSignIn,
+                          child: const Text(
+                            'Sign In',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: kWhite,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    // ── FORGOT PASSWORD
+                    Center(
+                      child: GestureDetector(
+                        onTap: _showForgotPassword,
+                        child: const Text(
+                          'Forgot Password?',
+                          style: TextStyle(
+                            color: kTerra,
+                            decoration: TextDecoration.underline,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 30),
+
+                    // ── HAND IMAGE
+                    Center(
+                      child: Image.asset(
+                        'assets/images/logo_hand.png',
+                        width: 200,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-void _onSignIn() {
-  debugPrint('Email: ${_emailController.text}');
-  debugPrint('Password: ${_passwordController.text}');
-}}
+  void _onSignIn() {
+    debugPrint('Sign in: ${_emailController.text}');
+  }
+
+  void _showForgotPassword() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const ForgotPasswordScreen(),
+    );
+  }
+}

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
-import 'login_screen.dart'; // we will create this next
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -10,36 +9,29 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-
-  // Controllers read what the user types in each field
   final _fullNameController    = TextEditingController();
   final _phoneController       = TextEditingController();
   final _emailController       = TextEditingController();
   final _passwordController    = TextEditingController();
   final _confirmPassController = TextEditingController();
 
-  bool _passwordVisible        = false; // toggle show/hide password
-  bool _confirmPassVisible     = false;
-  bool _agreedToTerms          = false; // checkbox
-
-  // Selected role: Donor or Beneficiary
-  String _selectedRole = 'Donor';
+  bool _passwordVisible    = false;
+  bool _confirmPassVisible = false;
+  bool _agreedToTerms      = false;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kSand,
-      body: SafeArea(
-        child: SingleChildScrollView( // allows scrolling when keyboard opens
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+      backgroundColor: kSage,
+      body: Column(
+        children: [
 
-              const SizedBox(height: 20),
-
-              // ── TITLE
-              const Text(
+          Container(
+            color: kSage,
+            padding: const EdgeInsets.fromLTRB(24, 80, 24, 20),
+            child: const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
                 'Register Account',
                 style: TextStyle(
                   fontSize: 28,
@@ -47,154 +39,139 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   color: kTeal,
                 ),
               ),
+            ),
+          ),
 
-              const SizedBox(height: 28),
-
-              // ── FULL NAME
-              _buildTextField(
-                controller: _fullNameController,
-                label: 'Full Name',
-                icon: Icons.person_outline,
-              ),
-
-              const SizedBox(height: 16),
-
-              // ── PHONE NUMBER
-              _buildTextField(
-                controller: _phoneController,
-                label: 'Phone Number',
-                icon: Icons.phone_outlined,
-                keyboardType: TextInputType.phone,
-              ),
-
-              const SizedBox(height: 16),
-
-              // ── EMAIL
-              _buildTextField(
-                controller: _emailController,
-                label: 'E-Mail',
-                icon: Icons.email_outlined,
-                keyboardType: TextInputType.emailAddress,
-              ),
-
-              const SizedBox(height: 16),
-
-              // ── PASSWORD
-              _buildPasswordField(
-                controller: _passwordController,
-                label: 'Password',
-                isVisible: _passwordVisible,
-                onToggle: () => setState(
-                  () => _passwordVisible = !_passwordVisible),
-              ),
-
-              const SizedBox(height: 16),
-
-              // ── CONFIRM PASSWORD
-              _buildPasswordField(
-                controller: _confirmPassController,
-                label: 'Confirm Your Password',
-                isVisible: _confirmPassVisible,
-                onToggle: () => setState(
-                  () => _confirmPassVisible = !_confirmPassVisible),
-              ),
-
-              const SizedBox(height: 20),
-
-              // ── ROLE SELECTOR (Donor / Beneficiary)
-              Row(
-                children: [
-                  _buildRoleButton('Donor'),
-                  const SizedBox(width: 12),
-                  _buildRoleButton('Beneficiary'),
-                ],
-              ),
-
-              const SizedBox(height: 20),
-
-              // ── TERMS CHECKBOX
-              Row(
-                children: [
-                  Checkbox(
-                    value: _agreedToTerms,
-                    activeColor: kTeal,
-                    onChanged: (val) =>
-                        setState(() => _agreedToTerms = val!),
-                  ),
-                  const Expanded(
-                    child: Text(
-                      'I agree to the Terms of Use',
-                      style: TextStyle(fontSize: 13, color: kSage),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              // ── SIGN UP BUTTON
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kTeal,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                  ),
-                  onPressed: _agreedToTerms ? _onSignUp : null,
-                  child: const Text(
-                    'Sign Up',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: kWhite,
-                    ),
-                  ),
+          Expanded(
+            child: Container(
+              decoration: const BoxDecoration(
+                color: kSand,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(30),
+                  topRight: Radius.circular(30),
                 ),
               ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
 
-              const SizedBox(height: 20),
-
-              // ── ALREADY HAVE ACCOUNT
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text(
-                    'Already have an account? ',
-                    style: TextStyle(color: kSage),
-                  ),
-                  GestureDetector(
-                    onTap: () => Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const LoginScreen()),
+                    _buildUnderlineField(
+                      controller: _fullNameController,
+                      label: 'Full Name',
                     ),
-                    child: const Text(
-                      'Sign In',
-                      style: TextStyle(
-                        color: kTerra,
-                        fontWeight: FontWeight.bold,
+
+                    const SizedBox(height: 20),
+
+                    _buildUnderlineField(
+                      controller: _phoneController,
+                      label: 'Phone Number',
+                      keyboardType: TextInputType.phone,
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    _buildUnderlineField(
+                      controller: _emailController,
+                      label: 'E-Mail',
+                      keyboardType: TextInputType.emailAddress,
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    _buildPasswordUnderlineField(
+                      controller: _passwordController,
+                      label: 'Password',
+                      isVisible: _passwordVisible,
+                      onToggle: () => setState(
+                          () => _passwordVisible = !_passwordVisible),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    _buildPasswordUnderlineField(
+                      controller: _confirmPassController,
+                      label: 'Confirm Your Password',
+                      isVisible: _confirmPassVisible,
+                      onToggle: () => setState(
+                          () => _confirmPassVisible = !_confirmPassVisible),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: _agreedToTerms,
+                          activeColor: kTeal,
+                          shape: const CircleBorder(),
+                          onChanged: (val) =>
+                              setState(() => _agreedToTerms = val!),
+                        ),
+                        const Text(
+                          'I Agree To The ',
+                          style: TextStyle(fontSize: 13, color: kSage),
+                        ),
+                        const Text(
+                          'Terms & Conditions.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: kTerra,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    Center(
+                      child: SizedBox(
+                        width: 200,
+                        height: 52,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: kTeal,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                          ),
+                          onPressed: _agreedToTerms ? _onSignUp : null,
+                          child: const Text(
+                            'Sign Up',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: kWhite,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
 
-              const SizedBox(height: 20),
-            ],
+                    const SizedBox(height: 30),
+
+                    Center(
+                      child: Image.asset(
+                        'assets/images/logo_hand.png',
+                        width: 200,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  // ── REUSABLE text field widget
-  Widget _buildTextField({
+  Widget _buildUnderlineField({
     required TextEditingController controller,
     required String label,
-    required IconData icon,
     TextInputType keyboardType = TextInputType.text,
   }) {
     return TextField(
@@ -202,24 +179,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
       keyboardType: keyboardType,
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: kSage),
-        prefixIcon: Icon(icon, color: kSage),
-        filled: true,
-        fillColor: kWhite,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
+        labelStyle: const TextStyle(color: kSage, fontSize: 14),
+        enabledBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: kSage),
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: kTeal, width: 1.5),
+        focusedBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: kTeal, width: 1.5),
         ),
+        filled: false,
       ),
     );
   }
 
-  // ── REUSABLE password field widget
-  Widget _buildPasswordField({
+  Widget _buildPasswordUnderlineField({
     required TextEditingController controller,
     required String label,
     required bool isVisible,
@@ -227,65 +199,101 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }) {
     return TextField(
       controller: controller,
-      obscureText: !isVisible, // hides the text
+      obscureText: !isVisible,
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: kSage),
-        prefixIcon: const Icon(Icons.lock_outline, color: kSage),
+        labelStyle: const TextStyle(color: kSage, fontSize: 14),
         suffixIcon: IconButton(
           icon: Icon(
-            isVisible ? Icons.visibility : Icons.visibility_off,
-            color: kSage,
+            isVisible ? Icons.visibility : Icons.lock_outline,
+            color: kSage, size: 20,
           ),
           onPressed: onToggle,
         ),
-        filled: true,
-        fillColor: kWhite,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
+        enabledBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: kSage),
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: kTeal, width: 1.5),
+        focusedBorder: const UnderlineInputBorder(
+          borderSide: BorderSide(color: kTeal, width: 1.5),
         ),
+        filled: false,
       ),
     );
   }
 
-  // ── ROLE selector button
-  Widget _buildRoleButton(String role) {
-    final bool isSelected = _selectedRole == role;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedRole = role),
-        child: Container(
-          height: 48,
-          decoration: BoxDecoration(
-            color: isSelected ? kTeal : kWhite,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isSelected ? kTeal : kSage,
-            ),
+  void _onSignUp() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _buildSuccessSheet(
+        message: 'Your Account Has Been Created\nSuccessfully!',
+        onDone: () {
+          Navigator.popUntil(context, (route) => route.isFirst);
+        },
+      ),
+    );
+  }
+
+  Widget _buildSuccessSheet({
+    required String message,
+    required VoidCallback onDone,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+        decoration: const BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(30),
+            topRight: Radius.circular(30),
           ),
-          child: Center(
-            child: Text(
-              role,
-              style: TextStyle(
-                color: isSelected ? kWhite : kSage,
-                fontWeight: FontWeight.w600,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(
+                color: kSage,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-          ),
+
+            const SizedBox(height: 30),
+
+            Container(
+              width: 80, height: 80,
+              decoration: const BoxDecoration(
+                color: Color(0xFF2AE523),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.check,
+                color: kWhite,
+                size: 45,
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: kTeal,
+                height: 1.5,
+              ),
+            ),
+
+            const SizedBox(height: 30),
+          ],
         ),
       ),
     );
   }
-
-  // ── SIGN UP action
-  void _onSignUp() {
-  debugPrint('Name: ${_fullNameController.text}');
-  debugPrint('Email: ${_emailController.text}');
-  debugPrint('Role: $_selectedRole');
-}
 }

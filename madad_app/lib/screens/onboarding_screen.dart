@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
-import 'register_screen.dart'; // we will create this next
+import 'welcome_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -10,186 +10,196 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  
-  // Controls the sliding between pages
   final PageController _pageController = PageController();
-  int _currentPage = 0; // tracks which page we are on
+  int _currentPage = 0;
 
-  // Your 3 onboarding slides data
   final List<Map<String, String>> _slides = [
     {
       'title': 'No Food Waste !',
       'description':
-          'One Third Of All Food Produced Is Wasted. Together, We Can Change That.',
-      'image': 'assets/images/onboarding1.png', // add your image later
+          'One Third Of All Food Produced Is Lost Or Wasted Around 1.3 Billion Tonnes Of Food.',
+      'image': 'assets/images/onboarding1.png',
     },
     {
-      'title': 'We Are In Together',
-      'description':
-          'We Can Do This Together With Our Community. Join Us Today.',
+      'title': 'Just One Tap .',
+      'description': 'Save Food. Help Neighbors. One Click Away.',
       'image': 'assets/images/onboarding2.png',
     },
     {
-      'title': 'Just One Tap',
-      'description':
-          'Save Food Near You, One Click Away.',
+      'title': 'We Are In Together.',
+      'description': 'We Can Be The Ones Who Ends Hunger.',
       'image': 'assets/images/onboarding3.png',
     },
   ];
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: kSand,
-      body: SafeArea(
-        child: Column(
-          children: [
-
-            // ── SKIP button (top right)
-            Align(
-              alignment: Alignment.topRight,
-              child: TextButton(
-                onPressed: _goToRegister,
-                child: const Text(
-                  'Skip',
-                  style: TextStyle(color: kSage, fontSize: 14),
-                ),
-              ),
-            ),
-
-            // ── SLIDES (takes most of the screen)
-            Expanded(
-              child: PageView.builder(
-                controller: _pageController,
-                itemCount: _slides.length,
-                onPageChanged: (index) {
-                  setState(() => _currentPage = index);
-                },
-                itemBuilder: (context, index) {
-                  return _buildSlide(_slides[index]);
-                },
-              ),
-            ),
-
-            // ── DOTS indicator
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                _slides.length,
-                (index) => _buildDot(index),
-              ),
-            ),
-
-            const SizedBox(height: 30),
-
-            // ── NEXT / GET STARTED button
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: SizedBox(
-                width: double.infinity,  // full width
-                height: 52,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kTerra,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                  ),
-                  onPressed: () {
-                    if (_currentPage < _slides.length - 1) {
-                      // go to next slide
-                      _pageController.nextPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                      );
-                    } else {
-                      // last slide → go to register
-                      _goToRegister();
-                    }
-                  },
-                  child: Text(
-                    _currentPage < _slides.length - 1 ? 'Next' : 'Get Started',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: kWhite,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 30),
-          ],
-        ),
-      ),
-    );
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
-  // ── BUILD each slide
-  Widget _buildSlide(Map<String, String> slide) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+  void _goToNext() {
+    if (_currentPage < _slides.length - 1) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+      );
+    }
+  }
+
+  void _goToPrev() {
+    if (_currentPage > 0) {
+      _pageController.previousPage(
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
         children: [
-          // Image placeholder (replace with your real image)
-          Container(
-            height: 280,
-            decoration: BoxDecoration(
-              color: kSage.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Center(
-              child: Icon(Icons.eco, size: 100, color: kTeal),
-            ),
-            // Later replace with:
-            // Image.asset(slide['image']!, fit: BoxFit.cover)
+
+          // ── FULL SCREEN PAGE VIEW
+          PageView.builder(
+            controller: _pageController,
+            itemCount: _slides.length,
+            onPageChanged: (index) =>
+                setState(() => _currentPage = index),
+            itemBuilder: (_, index) =>
+                _buildSlide(_slides[index]),
           ),
-          const SizedBox(height: 32),
-          Text(
-            slide['title']!,
-            style: const TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
-              color: kTeal,
+
+          // ── BOTTOM BAR (dots + buttons)
+          Positioned(
+            bottom: 40,
+            left: 24,
+            right: 24,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+
+                // Previous
+                GestureDetector(
+                  onTap: _goToPrev,
+                  child: Text(
+                    'Previous',
+                    style: TextStyle(
+                      color: _currentPage == 0
+                          ? Colors.transparent
+                          : kWhite,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+
+                // Dots
+                Row(
+                  children: List.generate(
+                    _slides.length,
+                    (index) => AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      width: _currentPage == index ? 20 : 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: _currentPage == index
+                            ? kWhite
+                            : kWhite.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Next / Get Started
+                GestureDetector(
+                  onTap: _goToNext,
+                  child: Text(
+                    _currentPage == _slides.length - 1
+                        ? 'Start'
+                        : 'Next',
+                    style: const TextStyle(
+                      color: kWhite,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            slide['description']!,
-            style: const TextStyle(
-              fontSize: 14,
-              color: kSage,
-              height: 1.6,
-            ),
-            textAlign: TextAlign.center,
           ),
         ],
       ),
     );
   }
 
-  // ── BUILD dot indicator
-  Widget _buildDot(int index) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      width: _currentPage == index ? 24 : 8,  // active dot is wider
-      height: 8,
-      decoration: BoxDecoration(
-        color: _currentPage == index ? kTerra : kSage,
-        borderRadius: BorderRadius.circular(4),
-      ),
-    );
-  }
+  Widget _buildSlide(Map<String, String> slide) {
+    return Stack(
+      children: [
 
-  // ── NAVIGATE to register screen
-  void _goToRegister() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+        // ── FULL SCREEN IMAGE
+        Positioned.fill(
+          child: Image.asset(
+            slide['image']!,
+            fit: BoxFit.cover,
+          ),
+        ),
+
+        // ── TEAL GRADIENT OVERLAY (bottom half)
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  kTeal.withValues(alpha: 0.85),
+                ],
+                stops: const [0.4, 1.0],
+              ),
+            ),
+          ),
+        ),
+
+        // ── TEXT at bottom left
+        Positioned(
+          bottom: 100,
+          left: 24,
+          right: 24,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                slide['title']!,
+                style: const TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                  color: kWhite,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                slide['description']!,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: kWhite,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

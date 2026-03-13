@@ -15,7 +15,7 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     Future.delayed(const Duration(seconds: 3), () {
-      if (!mounted) return; // safety check
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const OnboardingScreen()),
@@ -26,34 +26,20 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kSand,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 120, height: 120,
-              decoration: BoxDecoration(
-                color: kTeal,
-                borderRadius: BorderRadius.circular(60),
-              ),
-              child: const Icon(Icons.eco, color: kWhite, size: 60),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Madad',
-              style: TextStyle(
-                fontSize: 36,
-                fontWeight: FontWeight.bold,
-                color: kTeal,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Start Your Helping Journey',
-              style: TextStyle(fontSize: 14, color: kSage),
-            ),
-          ],
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [kWhite, kSage],
+          ),
+        ),
+        child: Center(
+          child: Image.asset(
+            'assets/images/logo_full.png',
+            width: 200,
+            fit: BoxFit.contain,
+          ),
         ),
       ),
     );

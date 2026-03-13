@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
-import 'reset_password_screen.dart';
+import 'otp_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -14,75 +14,98 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: kSand,
-      appBar: AppBar(
-        backgroundColor: kSand,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: kTeal),
-          onPressed: () => Navigator.pop(context),
+    return Container(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      decoration: const BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(30),
+          topRight: Radius.circular(30),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Padding(
+        padding: const EdgeInsets.all(28),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 20),
-            const Text(
-              'Forgot Password',
-              style: TextStyle(
-                fontSize: 28, fontWeight: FontWeight.bold, color: kTeal),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Please enter your email address to reset your password.',
-              style: TextStyle(fontSize: 14, color: kSage, height: 1.5),
-            ),
-            const SizedBox(height: 32),
-            TextField(
-              controller: _emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: InputDecoration(
-                labelText: 'Your Email',
-                labelStyle: const TextStyle(color: kSage),
-                prefixIcon: const Icon(Icons.email_outlined, color: kSage),
-                filled: true,
-                fillColor: kWhite,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: kTeal, width: 1.5),
+            // drag handle
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: kSage,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 20),
+            const Center(
+              child: Text(
+                'Forgot Password',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: kTeal,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Please Enter Your Email Address To Reset Your Password',
+              style: TextStyle(fontSize: 13, color: kSage, height: 1.5),
+            ),
+            const SizedBox(height: 24),
+            TextField(
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Your Email',
+                labelStyle: TextStyle(color: kSage, fontSize: 14),
+                enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: kSage),
+                ),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: kTeal, width: 1.5),
+                ),
+                filled: false,
+              ),
+            ),
+            const SizedBox(height: 28),
             SizedBox(
               width: double.infinity,
               height: 52,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: kTeal,
+                  backgroundColor: kTerra,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(30),
                   ),
                 ),
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const ResetPasswordScreen()),
-                ),
+                onPressed: () {
+                  Navigator.pop(context);
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (_) => OtpScreen(
+                      email: _emailController.text,
+                    ),
+                  );
+                },
                 child: const Text(
                   'Continue',
                   style: TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.bold, color: kWhite),
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: kWhite,
+                  ),
                 ),
               ),
             ),
+            const SizedBox(height: 10),
           ],
         ),
       ),
