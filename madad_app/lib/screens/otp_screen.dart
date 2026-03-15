@@ -230,18 +230,24 @@ class _OtpScreenState extends State<OtpScreen> {
     );
   }
 
-  void _onVerify() {
-    String otp = _controllers.map((c) => c.text).join();
-    if (otp.length < 4) {
-      setState(() => _hasError = true);
-      return;
-    }
-    Navigator.pop(context);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const ResetPasswordScreen(),
-    );
+void _onVerify() {
+  String otp = _controllers.map((c) => c.text).join();
+
+  if (otp.length < 4) {
+    setState(() => _hasError = true);
+    return;
   }
+
+  // Example: simulate getting token from backend
+  String resetToken = "TOKEN_FROM_BACKEND"; // <-- replace this with actual API response
+
+  Navigator.pop(context); // close OTP modal
+
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => ResetPasswordScreen(token: resetToken),
+  );
+}
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 import 'forgot_password_screen.dart';
+import '../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -169,9 +170,39 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _onSignIn() {
-    debugPrint('Sign in: ${_emailController.text}');
+  void _onSignIn() async {
+
+  final email = _emailController.text.trim();
+  final password = _passwordController.text.trim();
+
+  if (email.isEmpty || password.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Please fill all fields")),
+    );
+    return;
   }
+
+  try {
+
+    final response = await AuthService().login(
+      email: email,
+      password: password,
+    );
+
+    debugPrint(response.toString());
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Login successful")),
+    );
+
+  } catch (e) {
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Login failed: $e")),
+    );
+
+  }
+}
 
   void _showForgotPassword() {
     showModalBottomSheet(

@@ -3,15 +3,8 @@ import '../theme/colors.dart';
 import 'register_screen.dart';
 import 'login_screen.dart';
 
-class WelcomeScreen extends StatefulWidget {
+class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
-
-  @override
-  State<WelcomeScreen> createState() => _WelcomeScreenState();
-}
-
-class _WelcomeScreenState extends State<WelcomeScreen> {
-  bool _showSignUp = false;
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +15,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-
           const SizedBox(height: 60),
 
           const Padding(
@@ -57,7 +49,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             height: size.height * 0.65,
             child: Stack(
               children: [
-
                 // ── 1. ILLUSTRATION (bottom layer)
                 Positioned(
                   top: 0,
@@ -73,7 +64,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   ),
                 ),
 
-                // ── 2. DIAGONAL TEAL SHAPE (on top of illustration)
+                // ── 2. DIAGONAL TEAL SHAPE
                 Positioned(
                   bottom: 0,
                   left: 0,
@@ -85,23 +76,21 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   ),
                 ),
 
-                // ── 3. BOTTOM SHEET (on top of teal)
+                // ── 3. BOTTOM SHEET
                 Positioned(
                   bottom: 0,
                   left: 0,
                   right: 0,
                   child: Container(
                     padding: const EdgeInsets.fromLTRB(24, 24, 24, 36),
-                    decoration: BoxDecoration(
-                      color: _showSignUp ? kTeal : kSand,
-                      borderRadius: const BorderRadius.only(
+                    decoration: const BoxDecoration(
+                      color: kSand,
+                      borderRadius: BorderRadius.only(
                         topLeft: Radius.circular(30),
                         topRight: Radius.circular(30),
                       ),
                     ),
-                    child: _showSignUp
-                        ? _buildSignUpButtons()
-                        : _buildRoleButtons(),
+                    child: _buildRoleButtons(context),
                   ),
                 ),
               ],
@@ -112,15 +101,18 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     );
   }
 
-  Widget _buildRoleButtons() {
+  Widget _buildRoleButtons(BuildContext context) {
     return Row(
       children: [
         Expanded(
           child: GestureDetector(
-            onTap: () => setState(() => _showSignUp = true),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const RegisterScreen()),
+            ),
             child: const Center(
               child: Text(
-                'Donor',
+                'Donor / Beneficiary',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -133,10 +125,13 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         Container(width: 1, height: 30, color: kSage),
         Expanded(
           child: GestureDetector(
-            onTap: () => setState(() => _showSignUp = true),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+            ),
             child: const Center(
               child: Text(
-                'Beneficiary',
+                'Asossiation',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -144,91 +139,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 ),
               ),
             ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSignUpButtons() {
-    return Column(
-      children: [
-
-        SizedBox(
-          width: double.infinity,
-          height: 52,
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: kTerra,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(30),
-              ),
-            ),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const RegisterScreen()),
-            ),
-            child: const Text(
-              'Sign Up',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: kWhite,
-              ),
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 14),
-
-        Wrap(
-          alignment: WrapAlignment.center,
-          children: [
-            const Text(
-              'Did You Have Already An Account ? ',
-              style: TextStyle(fontSize: 13, color: kWhite),
-            ),
-            GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              ),
-              child: const Text(
-                'Sign In',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: kWhite,
-                  decoration: TextDecoration.underline,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            const Text(
-              ' Now',
-              style: TextStyle(fontSize: 13, color: kWhite),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 8),
-        const Text('Or', style: TextStyle(color: kWhite, fontSize: 13)),
-        const SizedBox(height: 8),
-
-        GestureDetector(
-          onTap: () {},
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'Continue As A Guest ',
-                style: TextStyle(
-                  color: kTerra,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-              ),
-              Icon(Icons.chevron_right, color: kTerra, size: 18),
-            ],
           ),
         ),
       ],

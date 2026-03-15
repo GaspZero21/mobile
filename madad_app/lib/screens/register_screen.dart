@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
+import '../services/auth_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -221,7 +222,39 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  void _onSignUp() {
+ void _onSignUp() async {
+
+  final name = _fullNameController.text.trim();
+  final phone = _phoneController.text.trim();
+  final email = _emailController.text.trim();
+  final password = _passwordController.text.trim();
+  final confirm = _confirmPassController.text.trim();
+
+  if (name.isEmpty || email.isEmpty || password.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Please fill required fields")),
+    );
+    return;
+  }
+
+  if (password != confirm) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Passwords do not match")),
+    );
+    return;
+  }
+
+  try {
+
+    final response = await AuthService().register(
+      name: name,
+      email: email,
+      password: password,
+      phoneNumber: phone,
+    );
+
+    debugPrint(response.toString());
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -233,7 +266,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
         },
       ),
     );
+
+  } catch (e) {
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Registration failed: $e")),
+    );
+
   }
+}
 
   Widget _buildSuccessSheet({
     required String message,

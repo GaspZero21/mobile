@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 import 'otp_screen.dart';
+import '../services/auth_service.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -10,7 +11,14 @@ class ForgotPasswordScreen extends StatefulWidget {
 }
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
-  final _emailController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  bool _loading = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,17 +39,21 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // drag handle
+            /// drag handle
             Center(
               child: Container(
-                width: 40, height: 4,
+                width: 40,
+                height: 4,
                 decoration: BoxDecoration(
                   color: kSage,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
+
             const SizedBox(height: 20),
+
+            /// title
             const Center(
               child: Text(
                 'Forgot Password',
@@ -52,12 +64,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 ),
               ),
             ),
+
             const SizedBox(height: 12),
+
             const Text(
               'Please Enter Your Email Address To Reset Your Password',
               style: TextStyle(fontSize: 13, color: kSage, height: 1.5),
             ),
+
             const SizedBox(height: 24),
+
+            /// email field
             TextField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
@@ -70,10 +87,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 focusedBorder: UnderlineInputBorder(
                   borderSide: BorderSide(color: kTeal, width: 1.5),
                 ),
-                filled: false,
               ),
             ),
+
             const SizedBox(height: 28),
+
+            /// button
             SizedBox(
               width: double.infinity,
               height: 52,
@@ -84,31 +103,75 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     borderRadius: BorderRadius.circular(30),
                   ),
                 ),
-                onPressed: () {
-                  Navigator.pop(context);
-                  showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    backgroundColor: Colors.transparent,
-                    builder: (_) => OtpScreen(
-                      email: _emailController.text,
-                    ),
-                  );
-                },
-                child: const Text(
-                  'Continue',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: kWhite,
-                  ),
-                ),
+                onPressed: _loading ? null : _sendResetEmail,
+                child: _loading
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text(
+                        'Continue',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: kWhite,
+                        ),
+                      ),
               ),
             ),
+
             const SizedBox(height: 10),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _sendResetEmail() async {
+    final email = _emailController.text.trim();
+
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Please enter your email")));
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+    });
+
+    try {
+      final response = await AuthService().forgotPassword(email);
+
+      debugPrint(response.toString());
+
+      if (!mounted) return;
+
+      Navigator.pop(context);
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => OtpScreen(email: email),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
   }
 }
