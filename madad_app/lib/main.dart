@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'screens/splash_screen.dart';
 import 'theme/colors.dart';
@@ -14,14 +13,13 @@ class MadadApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Madad',
-      debugShowCheckedModeBanner: false,  // removes debug banner
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primaryColor: kTeal,
         scaffoldBackgroundColor: kSand,
-        fontFamily: 'Poppins',           // we will add this font later
+        fontFamily: 'Poppins',
       ),
-      home: const SplashScreen(),        // first screen to show
+      home: const SplashScreen(),
     );
   }
 }
-

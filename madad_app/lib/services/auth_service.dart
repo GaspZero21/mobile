@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class AuthService {
@@ -22,7 +23,6 @@ class AuthService {
         "phoneNumber": phoneNumber,
       }),
     );
-
     return _handleResponse(response);
   }
 
@@ -36,7 +36,6 @@ class AuthService {
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({"email": email, "password": password}),
     );
-
     return _handleResponse(response);
   }
 
@@ -47,7 +46,6 @@ class AuthService {
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({"email": email}),
     );
-
     return _handleResponse(response);
   }
 
@@ -61,17 +59,14 @@ class AuthService {
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({"token": token, "password": password}),
     );
-
     return _handleResponse(response);
   }
 
   /// COMMON RESPONSE HANDLER
   Map<String, dynamic> _handleResponse(http.Response response) {
-    print("STATUS CODE: ${response.statusCode}");
-    print("RESPONSE BODY: ${response.body}");
-
+    debugPrint("STATUS CODE: ${response.statusCode}");
+    debugPrint("RESPONSE BODY: ${response.body}");
     final data = jsonDecode(response.body);
-
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return data;
     } else {

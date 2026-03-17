@@ -1,22 +1,22 @@
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
-import 'register_screen.dart';
+import 'donor_auth_screen.dart';
 import 'login_screen.dart';
-
+ 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
-
+ 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-
+ 
     return Scaffold(
       backgroundColor: kSand,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 60),
-
+ 
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 24),
             child: Text(
@@ -28,9 +28,9 @@ class WelcomeScreen extends StatelessWidget {
               ),
             ),
           ),
-
+ 
           const SizedBox(height: 6),
-
+ 
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 24),
             child: Text(
@@ -42,14 +42,15 @@ class WelcomeScreen extends StatelessWidget {
               ),
             ),
           ),
-
+ 
           const Spacer(),
-
+ 
           SizedBox(
             height: size.height * 0.65,
             child: Stack(
               children: [
-                // ── 1. ILLUSTRATION (bottom layer)
+ 
+                // ── 1. ILLUSTRATION
                 Positioned(
                   top: 0,
                   left: 0,
@@ -63,7 +64,7 @@ class WelcomeScreen extends StatelessWidget {
                     colorBlendMode: BlendMode.multiply,
                   ),
                 ),
-
+ 
                 // ── 2. DIAGONAL TEAL SHAPE
                 Positioned(
                   bottom: 0,
@@ -75,7 +76,7 @@ class WelcomeScreen extends StatelessWidget {
                     child: Container(color: kTeal),
                   ),
                 ),
-
+ 
                 // ── 3. BOTTOM SHEET
                 Positioned(
                   bottom: 0,
@@ -100,15 +101,17 @@ class WelcomeScreen extends StatelessWidget {
       ),
     );
   }
-
+ 
   Widget _buildRoleButtons(BuildContext context) {
     return Row(
       children: [
+ 
+        // ── DONOR / BENEFICIARY  →  DonorAuthScreen
         Expanded(
           child: GestureDetector(
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const RegisterScreen()),
+              MaterialPageRoute(builder: (_) => const DonorAuthScreen()),
             ),
             child: const Center(
               child: Text(
@@ -122,7 +125,10 @@ class WelcomeScreen extends StatelessWidget {
             ),
           ),
         ),
+ 
         Container(width: 1, height: 30, color: kSage),
+ 
+        // ── ASSOCIATION  →  LoginScreen
         Expanded(
           child: GestureDetector(
             onTap: () => Navigator.push(
@@ -131,7 +137,7 @@ class WelcomeScreen extends StatelessWidget {
             ),
             child: const Center(
               child: Text(
-                'Asossiation',
+                'Association',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -145,7 +151,7 @@ class WelcomeScreen extends StatelessWidget {
     );
   }
 }
-
+ 
 class _DiagonalClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
@@ -157,7 +163,8 @@ class _DiagonalClipper extends CustomClipper<Path> {
     path.close();
     return path;
   }
-
+ 
   @override
   bool shouldReclip(_DiagonalClipper oldClipper) => false;
 }
+ 

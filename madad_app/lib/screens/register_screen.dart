@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 import '../services/auth_service.dart';
+import 'home_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -23,15 +24,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kSage,
+      backgroundColor: kSand,
       body: Column(
         children: [
 
           Container(
-            color: kSage,
+            color: kSand,
             padding: const EdgeInsets.fromLTRB(24, 80, 24, 20),
             child: const Align(
-              alignment: Alignment.centerLeft,
+              alignment: Alignment.center,
               child: Text(
                 'Register Account',
                 style: TextStyle(
@@ -62,25 +63,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       controller: _fullNameController,
                       label: 'Full Name',
                     ),
-
                     const SizedBox(height: 20),
-
                     _buildUnderlineField(
                       controller: _phoneController,
                       label: 'Phone Number',
                       keyboardType: TextInputType.phone,
                     ),
-
                     const SizedBox(height: 20),
-
                     _buildUnderlineField(
                       controller: _emailController,
                       label: 'E-Mail',
                       keyboardType: TextInputType.emailAddress,
                     ),
-
                     const SizedBox(height: 20),
-
                     _buildPasswordUnderlineField(
                       controller: _passwordController,
                       label: 'Password',
@@ -88,9 +83,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       onToggle: () => setState(
                           () => _passwordVisible = !_passwordVisible),
                     ),
-
                     const SizedBox(height: 20),
-
                     _buildPasswordUnderlineField(
                       controller: _confirmPassController,
                       label: 'Confirm Your Password',
@@ -129,8 +122,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                     Center(
                       child: SizedBox(
-                        width: 200,
-                        height: 52,
+                        width: 200, height: 52,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: kTeal,
@@ -222,59 +214,60 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
- void _onSignUp() async {
+  Future<void> _onSignUp() async {
+    final name     = _fullNameController.text.trim();
+    final phone    = _phoneController.text.trim();
+    final email    = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final confirm  = _confirmPassController.text.trim();
 
-  final name = _fullNameController.text.trim();
-  final phone = _phoneController.text.trim();
-  final email = _emailController.text.trim();
-  final password = _passwordController.text.trim();
-  final confirm = _confirmPassController.text.trim();
+    if (name.isEmpty || email.isEmpty || password.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please fill required fields")),
+      );
+      return;
+    }
 
-  if (name.isEmpty || email.isEmpty || password.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Please fill required fields")),
-    );
-    return;
+    if (password != confirm) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Passwords do not match")),
+      );
+      return;
+    }
+
+    try {
+      final response = await AuthService().register(
+        name: name,
+        email: email,
+        password: password,
+        phoneNumber: phone,
+      );
+      debugPrint(response.toString());
+      if (!mounted) return;
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _buildSuccessSheet(
+          message: 'Your Account Has Been Created\nSuccessfully!',
+          onDone: () {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => const HomeScreen()),
+              (route) => false,
+            );
+          },
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Registration failed: $e")),
+      );
+    }
   }
-
-  if (password != confirm) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Passwords do not match")),
-    );
-    return;
-  }
-
-  try {
-
-    final response = await AuthService().register(
-      name: name,
-      email: email,
-      password: password,
-      phoneNumber: phone,
-    );
-
-    debugPrint(response.toString());
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _buildSuccessSheet(
-        message: 'Your Account Has Been Created\nSuccessfully!',
-        onDone: () {
-          Navigator.popUntil(context, (route) => route.isFirst);
-        },
-      ),
-    );
-
-  } catch (e) {
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Registration failed: $e")),
-    );
-
-  }
-}
 
   Widget _buildSuccessSheet({
     required String message,
@@ -302,24 +295,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-
             const SizedBox(height: 30),
-
             Container(
               width: 80, height: 80,
               decoration: const BoxDecoration(
                 color: Color(0xFF2AE523),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
-                Icons.check,
-                color: kWhite,
-                size: 45,
-              ),
+              child: const Icon(Icons.check, color: kWhite, size: 45),
             ),
-
             const SizedBox(height: 24),
-
             Text(
               message,
               textAlign: TextAlign.center,
@@ -330,8 +315,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 height: 1.5,
               ),
             ),
-
             const SizedBox(height: 30),
+            SizedBox(
+              width: 200,
+              height: 48,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kTeal,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                ),
+                onPressed: onDone,
+                child: const Text(
+                  'Go To Home',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: kWhite,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
