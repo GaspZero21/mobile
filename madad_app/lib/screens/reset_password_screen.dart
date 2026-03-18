@@ -2,10 +2,20 @@ import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 import '../services/auth_service.dart';
 
-class ResetPasswordScreen extends StatefulWidget {
-  final String token; // token passed from email or OTP
+class ResetPasswordException implements Exception {
+  final String message;
+  const ResetPasswordException(this.message);
+}
 
-  const ResetPasswordScreen({super.key, required this.token});
+class ResetPasswordScreen extends StatefulWidget {
+  final String email; // ✅ was: token
+  final String otp; // ✅ new
+
+  const ResetPasswordScreen({
+    super.key,
+    required this.email,
+    required this.otp,
+  });
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
@@ -17,6 +27,13 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   bool _passwordVisible = false;
   bool _confirmPassVisible = false;
   bool _loading = false;
+
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    _confirmPassController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -139,7 +156,14 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   ),
                   onPressed: _loading ? null : _onContinue,
                   child: _loading
-                      ? const CircularProgressIndicator(color: Colors.white)
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
                       : const Text(
                           'Continue',
                           style: TextStyle(
@@ -181,7 +205,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
     try {
       final response = await AuthService().resetPassword(
-        token: widget.token,
+        email: widget.email, // ✅ was: token
+        otp: widget.otp, // ✅ new
         password: password,
       );
 
@@ -200,8 +225,32 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           },
         ),
       );
-    } catch (e) {
-      if (mounted) {
+    } on Exception catch (e) {
+      if (!mounted) return;
+      final msg = e.toString().toLowerCase();
+
+      if (msg.contains('400') ||
+          msg.contains('invalid') ||
+          msg.contains('expired')) {
+        // ✅ Wrong or expired OTP — show error and go back to OTP screen
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Invalid or expired code. Please try again."),
+            backgroundColor: Colors.red,
+          ),
+        );
+        Navigator.pop(context); // go back to OTP screen
+      } else if (msg.contains('422') || msg.contains('validation')) {
+        // ✅ Weak password or validation error
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              "Password is too weak. Use at least 8 characters with a number.",
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      } else {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("Reset failed: $e")));
@@ -260,6 +309,28 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               ),
             ),
             const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kTerra,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                ),
+                onPressed: onDone,
+                child: const Text(
+                  'Back To Login',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: kWhite,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
           ],
         ),
       ),

@@ -12,15 +12,20 @@ class OtpScreen extends StatefulWidget {
 }
 
 class _OtpScreenState extends State<OtpScreen> {
-  final List<TextEditingController> _controllers =
-      List.generate(4, (_) => TextEditingController());
-  final List<FocusNode> _focusNodes =
-      List.generate(4, (_) => FocusNode());
+  final List<TextEditingController> _controllers = List.generate(
+    6,
+    (_) => TextEditingController(),
+  );
+  final List<FocusNode> _focusNodes = List.generate(
+    6,
+    (_) => FocusNode(),
+  );
 
   int _secondsLeft = 30;
   Timer? _timer;
   bool _canResend = false;
-  bool _hasError  = false;
+  bool _hasError = false;
+  bool _loading = false; // ✅ new
 
   @override
   void initState() {
@@ -29,7 +34,10 @@ class _OtpScreenState extends State<OtpScreen> {
   }
 
   void _startTimer() {
-    setState(() { _secondsLeft = 30; _canResend = false; });
+    setState(() {
+      _secondsLeft = 30;
+      _canResend = false;
+    });
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (_secondsLeft == 0) {
         t.cancel();
@@ -42,8 +50,12 @@ class _OtpScreenState extends State<OtpScreen> {
 
   @override
   void dispose() {
-    for (var c in _controllers) { c.dispose(); }
-    for (var f in _focusNodes)  { f.dispose(); }
+    for (var c in _controllers) {
+      c.dispose();
+    }
+    for (var f in _focusNodes) {
+      f.dispose();
+    }
     _timer?.cancel();
     super.dispose();
   }
@@ -54,7 +66,8 @@ class _OtpScreenState extends State<OtpScreen> {
       color: Colors.transparent,
       child: Container(
         padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom),
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
         decoration: const BoxDecoration(
           color: kWhite,
           borderRadius: BorderRadius.only(
@@ -69,7 +82,8 @@ class _OtpScreenState extends State<OtpScreen> {
             children: [
               // drag handle
               Container(
-                width: 40, height: 4,
+                width: 40,
+                height: 4,
                 decoration: BoxDecoration(
                   color: kSage,
                   borderRadius: BorderRadius.circular(2),
@@ -104,7 +118,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: List.generate(4, (i) => _buildOtpBox(i)),
+                children: List.generate(6, (i) => _buildOtpBox(i)),
               ),
 
               const SizedBox(height: 12),
@@ -115,25 +129,27 @@ class _OtpScreenState extends State<OtpScreen> {
                       style: TextStyle(color: kTerra, fontSize: 13),
                     )
                   : _canResend
-                      ? GestureDetector(
-                          onTap: () {
-                            for (var c in _controllers) { c.clear(); }
-                            _focusNodes[0].requestFocus();
-                            setState(() => _hasError = false);
-                            _startTimer();
-                          },
-                          child: const Text(
-                            'Resend Code',
-                            style: TextStyle(
-                              color: kTerra,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        )
-                      : Text(
-                          'Resend In $_secondsLeft Seconds',
-                          style: const TextStyle(color: kSage, fontSize: 13),
+                  ? GestureDetector(
+                      onTap: () {
+                        for (var c in _controllers) {
+                          c.clear();
+                        }
+                        _focusNodes[0].requestFocus();
+                        setState(() => _hasError = false);
+                        _startTimer();
+                      },
+                      child: const Text(
+                        'Resend Code',
+                        style: TextStyle(
+                          color: kTerra,
+                          fontWeight: FontWeight.bold,
                         ),
+                      ),
+                    )
+                  : Text(
+                      'Resend In $_secondsLeft Seconds',
+                      style: const TextStyle(color: kSage, fontSize: 13),
+                    ),
 
               const SizedBox(height: 24),
 
@@ -147,15 +163,24 @@ class _OtpScreenState extends State<OtpScreen> {
                       borderRadius: BorderRadius.circular(30),
                     ),
                   ),
-                  onPressed: _onVerify,
-                  child: const Text(
-                    'Verify',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: kWhite,
-                    ),
-                  ),
+                  onPressed: _loading ? null : _onVerify,
+                  child: _loading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text(
+                          'Verify',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: kWhite,
+                          ),
+                        ),
                 ),
               ),
               const SizedBox(height: 10),
@@ -169,7 +194,8 @@ class _OtpScreenState extends State<OtpScreen> {
   Widget _buildOtpBox(int index) {
     final bool isFilled = _controllers[index].text.isNotEmpty;
     return SizedBox(
-      width: 60, height: 60,
+      width: 48,
+      height: 56,
       child: TextField(
         controller: _controllers[index],
         focusNode: _focusNodes[index],
@@ -177,7 +203,7 @@ class _OtpScreenState extends State<OtpScreen> {
         keyboardType: TextInputType.number,
         maxLength: 1,
         style: const TextStyle(
-          fontSize: 22,
+          fontSize: 20,
           fontWeight: FontWeight.bold,
           color: kWhite,
         ),
@@ -187,8 +213,8 @@ class _OtpScreenState extends State<OtpScreen> {
           fillColor: _hasError
               ? const Color(0xFFC96E4A)
               : isFilled
-                  ? const Color(0xFFC96E4A)
-                  : const Color(0x85C96E4A),
+              ? const Color(0xFFC96E4A)
+              : const Color(0x85C96E4A),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide(
@@ -219,7 +245,7 @@ class _OtpScreenState extends State<OtpScreen> {
         ),
         onChanged: (value) {
           setState(() {});
-          if (value.isNotEmpty && index < 3) {
+          if (value.isNotEmpty && index < 5) {
             _focusNodes[index + 1].requestFocus();
           }
           if (value.isEmpty && index > 0) {
@@ -230,24 +256,30 @@ class _OtpScreenState extends State<OtpScreen> {
     );
   }
 
-void _onVerify() {
-  String otp = _controllers.map((c) => c.text).join();
+  Future<void> _onVerify() async {
+    String otp = _controllers.map((c) => c.text).join();
 
-  if (otp.length < 4) {
-    setState(() => _hasError = true);
-    return;
+    if (otp.length < 6) {
+      setState(() => _hasError = true);
+      return;
+    }
+
+    setState(() => _loading = true);
+
+    try {
+      Navigator.pop(context);
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => ResetPasswordScreen(
+          email: widget.email,
+          otp: otp,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
-
-  // Example: simulate getting token from backend
-  String resetToken = "TOKEN_FROM_BACKEND"; // <-- replace this with actual API response
-
-  Navigator.pop(context); // close OTP modal
-
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (_) => ResetPasswordScreen(token: resetToken),
-  );
-}
 }
