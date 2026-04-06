@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 import 'register_screen.dart';
 import 'login_screen.dart';
+import 'home_screen.dart';
 
+/// Entry auth screen for donors/beneficiaries.
+/// The welcome_screen.dart has been removed — this screen is the new entry point
+/// after onboarding for the Donor / Beneficiary role.
 class DonorAuthScreen extends StatelessWidget {
   const DonorAuthScreen({super.key});
 
@@ -82,9 +86,7 @@ class DonorAuthScreen extends StatelessWidget {
                   right: 0,
                   child: Container(
                     padding: const EdgeInsets.fromLTRB(24, 28, 24, 40),
-                    decoration: const BoxDecoration(
-                      color: kTeal,
-                    ),
+                    decoration: const BoxDecoration(color: kTeal),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -158,7 +160,13 @@ class DonorAuthScreen extends StatelessWidget {
 
                         GestureDetector(
                           onTap: () {
-                            // navigate to guest/home screen later
+                            // Continue as guest → go directly to HomeScreen
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const HomeScreen()),
+                              (route) => false,
+                            );
                           },
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,

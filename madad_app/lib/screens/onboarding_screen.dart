@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
-import 'welcome_screen.dart';
+import 'donor_auth_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -47,7 +47,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     } else {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const WelcomeScreen()),
+        MaterialPageRoute(builder: (_) => const DonorAuthScreen()),
       );
     }
   }
@@ -66,18 +66,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     return Scaffold(
       body: Stack(
         children: [
-
-          // ── FULL SCREEN PAGE VIEW
           PageView.builder(
             controller: _pageController,
             itemCount: _slides.length,
-            onPageChanged: (index) =>
-                setState(() => _currentPage = index),
-            itemBuilder: (_, index) =>
-                _buildSlide(_slides[index]),
+            onPageChanged: (index) => setState(() => _currentPage = index),
+            itemBuilder: (_, index) => _buildSlide(_slides[index]),
           ),
-
-          // ── BOTTOM BAR (dots + buttons)
           Positioned(
             bottom: 40,
             left: 24,
@@ -85,23 +79,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-
-                // Previous
                 GestureDetector(
                   onTap: _goToPrev,
                   child: Text(
                     'Previous',
                     style: TextStyle(
-                      color: _currentPage == 0
-                          ? Colors.transparent
-                          : kWhite,
+                      color: _currentPage == 0 ? Colors.transparent : kWhite,
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
-
-                // Dots
                 Row(
                   children: List.generate(
                     _slides.length,
@@ -119,14 +107,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                   ),
                 ),
-
-                // Next / Get Started
                 GestureDetector(
                   onTap: _goToNext,
                   child: Text(
-                    _currentPage == _slides.length - 1
-                        ? 'Start'
-                        : 'Next',
+                    _currentPage == _slides.length - 1 ? 'Start' : 'Next',
                     style: const TextStyle(
                       color: kWhite,
                       fontSize: 15,
@@ -145,16 +129,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget _buildSlide(Map<String, String> slide) {
     return Stack(
       children: [
-
-        // ── FULL SCREEN IMAGE
         Positioned.fill(
-          child: Image.asset(
-            slide['image']!,
-            fit: BoxFit.cover,
-          ),
+          child: Image.asset(slide['image']!, fit: BoxFit.cover),
         ),
-
-        // ── TEAL GRADIENT OVERLAY (bottom half)
         Positioned.fill(
           child: Container(
             decoration: BoxDecoration(
@@ -170,8 +147,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
         ),
-
-        // ── TEXT at bottom left
         Positioned(
           bottom: 100,
           left: 24,
