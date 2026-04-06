@@ -2,13 +2,13 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'dart:ui' as ui;
+import 'package:image_picker/image_picker.dart';
 import '../theme/colors.dart';
 import '../widgets/shared_bottom_nav.dart';
 import '../screens/my_donations_screen.dart';
+import '../screens/my_reservations_screen.dart';
 import '../services/auth_service.dart';
 import '../screens/donor_auth_screen.dart';
-
-import 'dart:html' as html;
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -21,19 +21,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Uint8List? _avatarBytes;
 
   Future<void> _pickAvatar() async {
-    if (kIsWeb) {
-      final input = html.FileUploadInputElement()
-        ..accept = 'image/*'
-        ..click();
-      await input.onChange.first;
-      if (input.files == null || input.files!.isEmpty) return;
-      final file   = input.files!.first;
-      final reader = html.FileReader();
-      reader.readAsArrayBuffer(file);
-      await reader.onLoad.first;
-      setState(() =>
-          _avatarBytes = Uint8List.fromList(reader.result as List<int>));
-    }
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    setState(() => _avatarBytes = bytes);
   }
 
   void _logout() {
@@ -94,7 +86,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         SizedBox(height: avatarSize - overlapAmount + 16),
 
-                        // Name
                         const Text('Z.Mohammed',
                             style: TextStyle(
                                 fontSize: 15,
@@ -103,10 +94,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                         const SizedBox(height: 28),
 
-                        // Menu items
                         Expanded(
                           child: ListView(
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 24),
                             children: [
                               _menuItem(
                                 icon: Icons.person_outline,
@@ -133,9 +124,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               _menuItem(
                                 icon: Icons.bookmark_outline,
                                 label: 'My Reservations',
-                                onTap: () {
-                                  // TODO: navigate to reservations screen
-                                },
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) =>
+                                          const MyReservationsScreen()),
+                                ),
                               ),
                               _divider(),
                               _menuItem(
@@ -172,7 +166,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          colors: [Color(0xA10F5C5C), Color(0x94C96E4A)],
+                          colors: [
+                            Color(0xA10F5C5C),
+                            Color(0x94C96E4A)
+                          ],
                           stops: [0.32, 1.0],
                         ),
                       ),
@@ -200,8 +197,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         decoration: BoxDecoration(
                             color: kWhite,
                             shape: BoxShape.circle,
-                            border:
-                                Border.all(color: kSage, width: 1)),
+                            border: Border.all(color: kSage, width: 1)),
                         child: const Icon(Icons.edit,
                             color: kTeal, size: 13),
                       ),
@@ -229,7 +225,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       leading: Container(
         width: 40, height: 40,
         decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
+            color: color.withValues(alpha: 0.12), // ← fixed
             shape: BoxShape.circle),
         child: Icon(icon, color: color, size: 20),
       ),
@@ -242,7 +238,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _divider() => const Divider(height: 1, color: Color(0xFFF0F0F0));
+  Widget _divider() =>
+      const Divider(height: 1, color: Color(0xFFF0F0F0));
 }
 
 // ── Edit Profile Screen ───────────────────────────────────────────────────────
@@ -343,19 +340,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       children: [
         Text(label,
             style: const TextStyle(
-                fontSize: 12, color: kSage, fontWeight: FontWeight.w500)),
+                fontSize: 12,
+                color: kSage,
+                fontWeight: FontWeight.w500)),
         const SizedBox(height: 6),
         Container(
           decoration: BoxDecoration(
-              color: kWhite, borderRadius: BorderRadius.circular(10)),
+              color: kWhite,
+              borderRadius: BorderRadius.circular(10)),
           child: TextField(
             controller: ctrl,
             keyboardType: type,
             maxLines: maxLines,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               border: InputBorder.none,
               isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
+              contentPadding: EdgeInsets.symmetric(
                   horizontal: 14, vertical: 12),
             ),
           ),

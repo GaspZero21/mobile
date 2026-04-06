@@ -10,14 +10,23 @@ class AuthService {
   // ── Token ────────────────────────────────────────────────────────────────────
 
   static void _saveToken(Map<String, dynamic> responseData) {
-    final token = responseData['data']?['accessToken'] as String?;
-    if (token != null && token.isNotEmpty) {
-      AppToken.set(token);
-      debugPrint('[Auth] ✅ Token saved (${token.substring(0, 20)}...)');
-    } else {
-      debugPrint('[Auth] ⚠️  accessToken not found. Keys: ${responseData.keys}');
-    }
+  final token = responseData['data']?['accessToken'] as String?;
+  final refresh = responseData['data']?['refreshToken'] as String?; // ← ADD
+
+  if (token != null && token.isNotEmpty) {
+    AppToken.set(token);
+    debugPrint('[Auth] ✅ Access token saved (${token.substring(0, 20)}...)');
+  } else {
+    debugPrint('[Auth] ⚠️  accessToken not found. Keys: ${responseData.keys}');
   }
+
+  if (refresh != null && refresh.isNotEmpty) {             // ← ADD
+    AppToken.setRefreshToken(refresh);                      // ← ADD
+    debugPrint('[Auth] ✅ Refresh token saved');             // ← ADD
+  } else {                                                  // ← ADD
+    debugPrint('[Auth] ⚠️  refreshToken not found');        // ← ADD
+  }                                                         // ← ADD
+}
 
   static void logout() {
     AppToken.clear();

@@ -1,196 +1,19 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../theme/colors.dart';
+import '../services/chat_service.dart';
 import '../services/app_token.dart';
 import '../widgets/shared_bottom_nav.dart';
 
-// ── Conversations list ─────────────────────────────────────────────────────────
-class ChatListScreen extends StatefulWidget {
-  const ChatListScreen({super.key});
-
-  @override
-  State<ChatListScreen> createState() => _ChatListScreenState();
-}
-
-class _ChatListScreenState extends State<ChatListScreen> {
-  static const String baseUrl =
-      'https://gasp-test-production.up.railway.app/api/v1';
-
-  List<Map<String, dynamic>> _conversations = [];
-  bool    _isLoading = true;
-  String? _error;
-
-  Map<String, String> get _headers {
-    final token = AppToken.get();
-    return {
-      'Content-Type': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
-    };
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _fetch();
-  }
-
-  Future<void> _fetch() async {
-    setState(() { _isLoading = true; _error = null; });
-    try {
-      final res  = await http.get(
-          Uri.parse('$baseUrl/conversations'), headers: _headers);
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      final data = body['data'];
-      List list  = [];
-      if (data is List) list = data;
-      if (data is Map && data['conversations'] is List) {
-        list = data['conversations'];
-      }
-      setState(() {
-        _conversations = List<Map<String, dynamic>>.from(list);
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() { _error = e.toString(); _isLoading = false; });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: kSand,
-      body: Column(
-        children: [
-          Container(
-            color: kTeal,
-            padding: const EdgeInsets.fromLTRB(16, 56, 16, 20),
-            child: const Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Messages',
-                  style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: kWhite)),
-            ),
-          ),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: kTeal))
-                : _error != null
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.wifi_off, color: kSage, size: 36),
-                            const SizedBox(height: 8),
-                            Text(_error!,
-                                style: const TextStyle(color: kSage)),
-                            TextButton(onPressed: _fetch,
-                                child: const Text('Retry',
-                                    style: TextStyle(color: kTeal))),
-                          ],
-                        ))
-                    : _conversations.isEmpty
-                        ? const Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.chat_bubble_outline,
-                                    color: kSage, size: 48),
-                                SizedBox(height: 12),
-                                Text('No conversations yet',
-                                    style: TextStyle(
-                                        color: kSage, fontSize: 14)),
-                              ],
-                            ))
-                        : RefreshIndicator(
-                            color: kTeal,
-                            onRefresh: _fetch,
-                            child: ListView.separated(
-                              itemCount: _conversations.length,
-                              separatorBuilder: (_, __) =>
-                                  const Divider(height: 1,
-                                      indent: 72,
-                                      color: Color(0xFFEEEEEE)),
-                              itemBuilder: (_, i) =>
-                                  _tile(_conversations[i]),
-                            ),
-                          ),
-          ),
-        ],
-      ),
-      bottomNavigationBar: const SharedBottomNav(currentIndex: 3),
-    );
-  }
-
-  Widget _tile(Map<String, dynamic> conv) {
-    final other      = conv['otherUser'] ?? conv['participant'] ?? {};
-    final name       = other['name'] ?? 'Unknown';
-    final lastMsg    = conv['lastMessage']?['content'] ?? '';
-    final unread     = (conv['unreadCount'] as num?)?.toInt() ?? 0;
-    final donationTitle = conv['donation']?['title'] ?? '';
-
-    return ListTile(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ChatScreen(
-            conversationId: conv['id'] as String,
-            otherName: name,
-            donationTitle: donationTitle,
-          ),
-        ),
-      ),
-      leading: CircleAvatar(
-        backgroundColor: kTeal.withOpacity(0.15),
-        child: Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
-            style: const TextStyle(
-                color: kTeal, fontWeight: FontWeight.bold)),
-      ),
-      title: Text(name,
-          style: const TextStyle(
-              fontWeight: FontWeight.w600, fontSize: 14)),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (donationTitle.isNotEmpty)
-            Text('Re: $donationTitle',
-                style: const TextStyle(fontSize: 10, color: kTeal)),
-          Text(lastMsg,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, color: kSage)),
-        ],
-      ),
-      trailing: unread > 0
-          ? Container(
-              width: 22, height: 22,
-              decoration: const BoxDecoration(
-                  color: kTerra, shape: BoxShape.circle),
-              child: Center(
-                child: Text('$unread',
-                    style: const TextStyle(
-                        color: kWhite,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold)),
-              ),
-            )
-          : null,
-    );
-  }
-}
-
-// ── Single conversation ────────────────────────────────────────────────────────
 class ChatScreen extends StatefulWidget {
-  final String conversationId;
+  final String reservationId;
   final String otherName;
   final String donationTitle;
 
   const ChatScreen({
     super.key,
-    required this.conversationId,
+    required this.reservationId,
     required this.otherName,
     required this.donationTitle,
   });
@@ -200,29 +23,21 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  static const String baseUrl =
-      'https://gasp-test-production.up.railway.app/api/v1';
-
   final _msgController = TextEditingController();
   final _scrollCtrl    = ScrollController();
   List<Map<String, dynamic>> _messages = [];
-  bool _sending = false;
-  Timer? _pollTimer;
-
-  Map<String, String> get _headers {
-    final token = AppToken.get();
-    return {
-      'Content-Type': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
-    };
-  }
+  bool    _sending  = false;
+  bool    _loading  = true;
+  Timer?  _pollTimer;
+  String? _myUserId;
 
   @override
   void initState() {
     super.initState();
+    _myUserId = _parseUserId(AppToken.get());
     _fetch();
-    // Poll every 5 seconds for new messages
-    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _fetch());
+    _pollTimer = Timer.periodic(
+        const Duration(seconds: 5), (_) => _fetch(silent: true));
   }
 
   @override
@@ -233,53 +48,100 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  Future<void> _fetch() async {
+  /// Decode the JWT payload to extract the userId claim
+  String? _parseUserId(String? token) {
+    if (token == null) return null;
     try {
-      final res  = await http.get(
-        Uri.parse('$baseUrl/conversations/${widget.conversationId}/messages'),
-        headers: _headers,
-      );
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      final data = body['data'];
-      List list  = [];
-      if (data is List) list = data;
-      if (data is Map && data['messages'] is List) list = data['messages'];
-      if (mounted) {
-        setState(() =>
-            _messages = List<Map<String, dynamic>>.from(list));
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollCtrl.hasClients) {
-            _scrollCtrl.animateTo(
-              _scrollCtrl.position.maxScrollExtent,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
-            );
-          }
-        });
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      final payload = parts[1];
+      // Base64 padding
+      final padded = payload.padRight(
+          payload.length + (4 - payload.length % 4) % 4, '=');
+      final decoded = String.fromCharCodes(
+          Uri.decodeFull(padded
+                  .replaceAll('-', '+')
+                  .replaceAll('_', '/'))
+              .codeUnits);
+      final json = Map<String, dynamic>.from(
+          jsonDecode(decoded) as Map);
+      return json['userId']?.toString() ??
+          json['sub']?.toString() ??
+          json['id']?.toString();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _fetch({bool silent = false}) async {
+    try {
+      final data = await ChatService().getChat(widget.reservationId);
+      final msgs = _extractMessages(data);
+      if (!mounted) return;
+      setState(() {
+        _messages = msgs;
+        _loading  = false;
+      });
+      _scrollToBottom();
+    } catch (e) {
+      if (!mounted) return;
+      if (!silent) setState(() => _loading = false);
+    }
+  }
+
+  List<Map<String, dynamic>> _extractMessages(Map<String, dynamic> data) {
+    final d = data['data'];
+    if (d is Map) {
+      if (d['messages'] is List) {
+        return List<Map<String, dynamic>>.from(d['messages'] as List);
       }
-    } catch (_) {}
+      if (d['data'] is Map && (d['data'] as Map)['messages'] is List) {
+        return List<Map<String, dynamic>>.from(
+            (d['data'] as Map)['messages'] as List);
+      }
+    }
+    if (data['messages'] is List) {
+      return List<Map<String, dynamic>>.from(data['messages'] as List);
+    }
+    return [];
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollCtrl.hasClients) {
+        _scrollCtrl.animateTo(
+          _scrollCtrl.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   Future<void> _send() async {
     final text = _msgController.text.trim();
     if (text.isEmpty) return;
-    setState(() => _sending = true);
     _msgController.clear();
+    setState(() => _sending = true);
     try {
-      await http.post(
-        Uri.parse(
-            '$baseUrl/conversations/${widget.conversationId}/messages'),
-        headers: _headers,
-        body: jsonEncode({'content': text}),
+      await ChatService().sendMessage(widget.reservationId, text);
+      await _fetch(silent: true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
       );
-      await _fetch();
-    } catch (_) {} finally {
+    } finally {
       if (mounted) setState(() => _sending = false);
     }
   }
 
   bool _isMe(Map<String, dynamic> msg) {
-    // The API should return senderId or a 'isMe' flag
+    final senderId = msg['senderId']?.toString() ??
+        msg['sender']?['id']?.toString();
+    if (_myUserId != null && senderId != null) {
+      return senderId == _myUserId;
+    }
     return msg['isMe'] == true || msg['isMine'] == true;
   }
 
@@ -306,18 +168,21 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: _messages.isEmpty
+            child: _loading
                 ? const Center(
-                    child: Text('No messages yet. Say hello!',
-                        style: TextStyle(color: kSage)))
-                : ListView.builder(
-                    controller: _scrollCtrl,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length,
-                    itemBuilder: (_, i) => _bubble(_messages[i]),
-                  ),
+                    child: CircularProgressIndicator(color: kTeal))
+                : _messages.isEmpty
+                    ? const Center(
+                        child: Text('No messages yet. Say hello!',
+                            style: TextStyle(color: kSage)))
+                    : ListView.builder(
+                        controller: _scrollCtrl,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _messages.length,
+                        itemBuilder: (_, i) => _bubble(_messages[i]),
+                      ),
           ),
-          // Input
+          // Input bar
           Container(
             color: kWhite,
             padding: const EdgeInsets.symmetric(
@@ -328,7 +193,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: TextField(
                     controller: _msgController,
                     decoration: InputDecoration(
-                      hintText: 'Type a message…',
+                      hintText: 'Type something…',
                       hintStyle:
                           const TextStyle(color: kSage, fontSize: 13),
                       filled: true,
@@ -376,8 +241,9 @@ class _ChatScreenState extends State<ChatScreen> {
     if (time != null) {
       final dt = DateTime.tryParse(time);
       if (dt != null) {
+        final local = dt.toLocal();
         timeStr =
-            '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+            '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
       }
     }
 
@@ -399,7 +265,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 4,
                 offset: const Offset(0, 2)),
           ],
@@ -417,7 +283,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 style: TextStyle(
                     fontSize: 10,
                     color: me
-                        ? kWhite.withOpacity(0.7)
+                        ? kWhite.withValues(alpha: 0.7)
                         : kSage)),
           ],
         ),

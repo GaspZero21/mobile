@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import '../theme/colors.dart';
 import '../services/app_token.dart';
+import '../services/reservation_service.dart';
 import '../widgets/shared_bottom_nav.dart';
 
 import 'dart:html' as html;
@@ -34,7 +35,6 @@ class _MyDonationsScreenState extends State<MyDonationsScreen> {
 
   Map<String, String> get _headers {
     final token = AppToken.get();
-    debugPrint('[MyDonations] token = ${token == null ? "null ❌" : "${token.substring(0, 20)}... ✅"}');
     return {
       'Content-Type': 'application/json',
       if (token != null) 'Authorization': 'Bearer $token',
@@ -46,43 +46,26 @@ class _MyDonationsScreenState extends State<MyDonationsScreen> {
     try {
       final res  = await http.get(
           Uri.parse('$baseUrl/donations/my'), headers: _headers);
-
-      debugPrint('[MyDonations] status: ${res.statusCode}');
-      debugPrint('[MyDonations] body: ${res.body}');
-
       final body = jsonDecode(res.body) as Map<String, dynamic>;
-
       if (res.statusCode != 200) {
         throw Exception(body['message'] ?? 'Error ${res.statusCode}');
       }
-
-      // Handle all possible response shapes
       final data = body['data'];
       List list  = [];
-
       if (data is List) {
         list = data;
       } else if (data is Map) {
-        if (data['donations'] is List) {
-          list = data['donations'];
-        } else if (data['items'] is List) {
-          list = data['items'];
-        } else {
-          // data itself might be the donation object — wrap it
-          list = [data];
-        }
+        if (data['donations'] is List) list = data['donations'];
+        else if (data['items'] is List) list = data['items'];
+        else list = [data];
       } else if (body['donations'] is List) {
         list = body['donations'];
       }
-
-      debugPrint('[MyDonations] parsed ${list.length} donations');
-
       setState(() {
         _donations = List<Map<String, dynamic>>.from(list);
         _isLoading = false;
       });
     } catch (e) {
-      debugPrint('[MyDonations] error: $e');
       setState(() { _error = e.toString(); _isLoading = false; });
     }
   }
@@ -94,27 +77,22 @@ class _MyDonationsScreenState extends State<MyDonationsScreen> {
         title: const Text('Delete donation?'),
         content: const Text('This cannot be undone.'),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
+          TextButton(onPressed: () => Navigator.pop(context, false),
               child: const Text('Cancel')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
+          TextButton(onPressed: () => Navigator.pop(context, true),
               child: const Text('Delete',
                   style: TextStyle(color: Colors.red))),
         ],
       ),
     );
     if (confirm != true) return;
-    await http.delete(
-        Uri.parse('$baseUrl/donations/$id'), headers: _headers);
+    await http.delete(Uri.parse('$baseUrl/donations/$id'), headers: _headers);
     _fetch();
   }
 
   void _openEdit(Map<String, dynamic> donation) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-          builder: (_) => EditDonationScreen(donation: donation)),
+    Navigator.push(context,
+      MaterialPageRoute(builder: (_) => EditDonationScreen(donation: donation)),
     ).then((updated) { if (updated == true) _fetch(); });
   }
 
@@ -123,9 +101,8 @@ class _MyDonationsScreenState extends State<MyDonationsScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _ReservationsSheet(
-          donation: donation, headers: _headers, baseUrl: baseUrl),
-    );
+      builder: (_) => _ReservationsSheet(donation: donation),
+    ).then((_) => _fetch());
   }
 
   @override
@@ -145,43 +122,34 @@ class _MyDonationsScreenState extends State<MyDonationsScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: kTeal))
           : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.wifi_off, color: kSage, size: 36),
-                      const SizedBox(height: 8),
-                      Text(_error!, style: const TextStyle(color: kSage),
-                          textAlign: TextAlign.center),
-                      TextButton(
-                          onPressed: _fetch,
-                          child: const Text('Retry',
-                              style: TextStyle(color: kTeal))),
-                    ],
-                  ))
+              ? Center(child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.wifi_off, color: kSage, size: 36),
+                    const SizedBox(height: 8),
+                    Text(_error!, style: const TextStyle(color: kSage),
+                        textAlign: TextAlign.center),
+                    TextButton(onPressed: _fetch,
+                        child: const Text('Retry',
+                            style: TextStyle(color: kTeal))),
+                  ]))
               : _donations.isEmpty
-                  ? const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.inbox_outlined,
-                              color: kSage, size: 48),
-                          SizedBox(height: 12),
-                          Text('You have no donations yet',
-                              style: TextStyle(
-                                  color: kSage, fontSize: 14)),
-                        ],
-                      ))
+                  ? const Center(child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.inbox_outlined, color: kSage, size: 48),
+                        SizedBox(height: 12),
+                        Text('You have no donations yet',
+                            style: TextStyle(color: kSage, fontSize: 14)),
+                      ]))
                   : RefreshIndicator(
                       color: kTeal,
                       onRefresh: _fetch,
                       child: ListView.separated(
                         padding: const EdgeInsets.all(16),
                         itemCount: _donations.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(height: 12),
-                        itemBuilder: (_, i) =>
-                            _buildCard(_donations[i]),
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (_, i) => _buildCard(_donations[i]),
                       ),
                     ),
       bottomNavigationBar: const SharedBottomNav(currentIndex: 4),
@@ -199,7 +167,6 @@ class _MyDonationsScreenState extends State<MyDonationsScreen> {
       decoration: BoxDecoration(
           color: kWhite, borderRadius: BorderRadius.circular(16)),
       child: Row(children: [
-        // Photo
         ClipRRect(
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(16),
@@ -212,65 +179,47 @@ class _MyDonationsScreenState extends State<MyDonationsScreen> {
                     photo.startsWith('http') ? photo : '$base$photo',
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Container(
-                      color: kSage,
-                      child: const Icon(Icons.fastfood,
-                          color: kWhite, size: 32),
-                    ),
+                        color: kSage,
+                        child: const Icon(Icons.fastfood,
+                            color: kWhite, size: 32)),
                   )
-                : Container(
-                    color: kSage,
-                    child: const Icon(Icons.fastfood,
-                        color: kWhite, size: 32)),
+                : Container(color: kSage,
+                    child: const Icon(Icons.fastfood, color: kWhite, size: 32)),
           ),
         ),
-
-        // Info + actions
         Expanded(
           child: Padding(
             padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(children: [
-                  Expanded(
-                    child: Text(d['title'] ?? '',
-                        style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87)),
-                  ),
+                  Expanded(child: Text(d['title'] ?? '',
+                      style: const TextStyle(fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87))),
                   if (urgent)
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                          color: kTerra,
+                      decoration: BoxDecoration(color: kTerra,
                           borderRadius: BorderRadius.circular(6)),
-                      child: const Text('URGENT',
-                          style: TextStyle(
-                              fontSize: 9,
-                              color: kWhite,
-                              fontWeight: FontWeight.bold)),
+                      child: const Text('URGENT', style: TextStyle(
+                          fontSize: 9, color: kWhite,
+                          fontWeight: FontWeight.bold)),
                     ),
                 ]),
                 const SizedBox(height: 4),
                 Row(children: [
                   Icon(Icons.circle, size: 7, color: statusColor),
                   const SizedBox(width: 4),
-                  Text(status,
-                      style: TextStyle(
-                          fontSize: 11, color: statusColor)),
+                  Text(status, style: TextStyle(fontSize: 11, color: statusColor)),
                 ]),
                 const SizedBox(height: 2),
                 Text(d['category'] ?? '',
-                    style: const TextStyle(
-                        fontSize: 11, color: kSage)),
+                    style: const TextStyle(fontSize: 11, color: kSage)),
                 const SizedBox(height: 10),
-
-                // Actions
                 Row(children: [
-                  _btn('Reservations', kTeal,
-                      () => _showReservations(d)),
+                  _btn('Reservations', kTeal, () => _showReservations(d)),
                   const SizedBox(width: 6),
                   _btn('Edit', kTerra, () => _openEdit(d),
                       icon: Icons.edit_outlined),
@@ -279,8 +228,7 @@ class _MyDonationsScreenState extends State<MyDonationsScreen> {
                     onTap: () => _delete(d['id']),
                     child: Container(
                       width: 30, height: 30,
-                      decoration: BoxDecoration(
-                          color: Colors.red.shade50,
+                      decoration: BoxDecoration(color: Colors.red.shade50,
                           borderRadius: BorderRadius.circular(8)),
                       child: const Icon(Icons.delete_outline,
                           color: Colors.red, size: 16),
@@ -300,8 +248,7 @@ class _MyDonationsScreenState extends State<MyDonationsScreen> {
       GestureDetector(
         onTap: onTap,
         child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
               color: color, borderRadius: BorderRadius.circular(20)),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -309,17 +256,425 @@ class _MyDonationsScreenState extends State<MyDonationsScreen> {
               Icon(icon, color: kWhite, size: 11),
               const SizedBox(width: 3),
             ],
-            Text(label,
-                style: const TextStyle(
-                    color: kWhite,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600)),
+            Text(label, style: const TextStyle(
+                color: kWhite, fontSize: 10, fontWeight: FontWeight.w600)),
           ]),
         ),
       );
 }
 
-// ── Edit Donation Screen ───────────────────────────────────────────────────────
+// ── Reservations bottom sheet ─────────────────────────────────────────────────
+class _ReservationsSheet extends StatefulWidget {
+  final Map<String, dynamic> donation;
+  const _ReservationsSheet({required this.donation});
+
+  @override
+  State<_ReservationsSheet> createState() => _ReservationsSheetState();
+}
+
+class _ReservationsSheetState extends State<_ReservationsSheet> {
+  List<Map<String, dynamic>> _reservations = [];
+  bool    _loading = true;
+  String? _actionError;
+
+  // ✅ FIXED: correct base URL (was broken: '.../reservations/{id}')
+  static const String baseUrl =
+      'https://gasp-test-production.up.railway.app/api/v1';
+
+  Map<String, String> get _headers {
+    final token = AppToken.get();
+    return {
+      'Content-Type': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  Future<void> _fetch() async {
+    setState(() { _loading = true; _actionError = null; });
+    try {
+      final donationId = widget.donation['id'] as String?;
+
+      // ✅ FIXED: GET /api/v1/reservations — returns all reservations for the
+      // logged-in user (as donor or beneficiary), then filter by donationId
+      // client-side. There is no /donations/{id}/reservations endpoint.
+      final res = await http.get(
+        Uri.parse('$baseUrl/reservations'),
+        headers: _headers,
+      );
+      debugPrint('[DonorReservations] ${res.statusCode} ${res.body}');
+
+      if (res.statusCode != 200) {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        throw Exception(body['message'] ?? 'Error ${res.statusCode}');
+      }
+
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final data = body['data'];
+      List list  = [];
+      if (data is List) {
+        list = data;
+      } else if (data is Map) {
+        if (data['reservations'] is List) list = data['reservations'];
+        else if (data['items'] is List)   list = data['items'];
+      } else if (body['reservations'] is List) {
+        list = body['reservations'];
+      }
+
+      // ✅ Filter client-side to only show reservations for this donation
+      final all = List<Map<String, dynamic>>.from(list);
+      final filtered = donationId == null
+          ? all
+          : all.where((r) {
+              final don = r['donation'];
+              if (don is Map) return don['id']?.toString() == donationId;
+              return r['donationId']?.toString() == donationId;
+            }).toList();
+
+      if (!mounted) return;
+      setState(() {
+        _reservations = filtered;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _loading = false; _actionError = e.toString(); });
+    }
+  }
+
+  // ── Confirm reservation (DONATOR, within 2h window) ──────────────────────
+  // ✅ PATCH /api/v1/reservations/{id}/confirm
+  Future<void> _confirm(String id) async {
+    _showLoadingOverlay();
+    try {
+      await ReservationService().confirmReservation(id);
+      if (!mounted) return;
+      Navigator.pop(context);
+      _snack('Reservation confirmed ✓', Colors.green);
+      _fetch();
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      _snack('Error: $e', Colors.red);
+    }
+  }
+
+  // ── Cancel reservation (donor or beneficiary) ─────────────────────────────
+  // ✅ PATCH /api/v1/reservations/{id}/cancel
+  Future<void> _cancel(String id) async {
+    final ok = await _confirmDialog(
+      title: 'Cancel this reservation?',
+      message: 'The beneficiary will be notified.',
+      actionLabel: 'Yes, Cancel',
+    );
+    if (!ok) return;
+    _showLoadingOverlay();
+    try {
+      await ReservationService().cancelReservation(id);
+      if (!mounted) return;
+      Navigator.pop(context);
+      _snack('Reservation cancelled', kTerra);
+      _fetch();
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      _snack('Error: $e', Colors.red);
+    }
+  }
+
+  // ── Complete reservation (DONATOR, after pickup) ──────────────────────────
+  // ✅ PATCH /api/v1/reservations/{id}/complete
+  Future<void> _complete(String id) async {
+    final ok = await _confirmDialog(
+      title: 'Mark as completed?',
+      message: 'Confirm the beneficiary has picked up this donation.',
+      actionLabel: 'Yes, Complete',
+      actionColor: Colors.green,
+    );
+    if (!ok) return;
+    _showLoadingOverlay();
+    try {
+      await ReservationService().completeReservation(id);
+      if (!mounted) return;
+      Navigator.pop(context);
+      _snack('Donation completed 🎉', Colors.green);
+      _fetch();
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      _snack('Error: $e', Colors.red);
+    }
+  }
+
+  void _showLoadingOverlay() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+          child: CircularProgressIndicator(color: kTeal)),
+    );
+  }
+
+  Future<bool> _confirmDialog({
+    required String title,
+    required String message,
+    required String actionLabel,
+    Color actionColor = kTerra,
+  }) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16)),
+            title: Text(title,
+                style: const TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.bold)),
+            content: Text(message,
+                style: const TextStyle(fontSize: 13, color: kSage)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Back',
+                    style: TextStyle(color: kSage)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: actionColor,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20)),
+                ),
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(actionLabel,
+                    style: const TextStyle(
+                        color: kWhite, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  void _snack(String msg, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: color),
+    );
+  }
+
+  // ── Status helpers ────────────────────────────────────────────────────────
+  Color _statusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'confirmed': return Colors.green;
+      case 'cancelled':
+      case 'canceled':  return Colors.red;
+      case 'completed': return kTeal;
+      default:          return Colors.orange;
+    }
+  }
+
+  IconData _statusIcon(String status) {
+    switch (status.toLowerCase()) {
+      case 'confirmed': return Icons.check_circle_outline;
+      case 'cancelled':
+      case 'canceled':  return Icons.cancel_outlined;
+      case 'completed': return Icons.done_all;
+      default:          return Icons.hourglass_empty;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+          20, 16, 20, MediaQuery.of(context).viewInsets.bottom + 32),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 40, height: 4,
+            decoration: BoxDecoration(color: kSage.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(2))),
+        const SizedBox(height: 16),
+
+        Text('Reservations for "${widget.donation['title']}"',
+            style: const TextStyle(fontSize: 15,
+                fontWeight: FontWeight.bold, color: kTeal),
+            textAlign: TextAlign.center),
+        const SizedBox(height: 4),
+
+        const Text(
+          'You must confirm or cancel each request within 2 hours.',
+          style: TextStyle(fontSize: 11, color: kSage),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 16),
+
+        if (_loading)
+          const Padding(padding: EdgeInsets.all(32),
+              child: CircularProgressIndicator(color: kTeal))
+        else if (_actionError != null)
+          Padding(padding: const EdgeInsets.all(16),
+              child: Text(_actionError!,
+                  style: const TextStyle(color: Colors.red, fontSize: 13),
+                  textAlign: TextAlign.center))
+        else if (_reservations.isEmpty)
+          const Padding(padding: EdgeInsets.all(32),
+              child: Text('No reservations yet',
+                  style: TextStyle(color: kSage, fontSize: 14)))
+        else
+          ConstrainedBox(
+            constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.55),
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: _reservations.length,
+              separatorBuilder: (_, __) =>
+                  const Divider(height: 1, color: Color(0xFFEEEEEE)),
+              itemBuilder: (_, i) => _tile(_reservations[i]),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  Widget _tile(Map<String, dynamic> r) {
+    final requester = r['requester'] ?? r['beneficiary'] ?? r['user'] ?? {};
+    final name      = requester['name'] as String? ?? 'Unknown';
+    final status    = (r['status'] as String? ?? 'pending').toLowerCase();
+    final id        = r['id'] as String? ?? '';
+    final isPending   = status == 'pending';
+    final isConfirmed = status == 'confirmed';
+
+    final createdAt = r['createdAt'] as String?;
+    String timeStr = '';
+    if (createdAt != null) {
+      final dt = DateTime.tryParse(createdAt)?.toLocal();
+      if (dt != null) {
+        timeStr =
+            '${dt.day.toString().padLeft(2,'0')}/'
+            '${dt.month.toString().padLeft(2,'0')} '
+            '${dt.hour.toString().padLeft(2,'0')}:'
+            '${dt.minute.toString().padLeft(2,'0')}';
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: kSage.withOpacity(0.2),
+              child: Text(
+                name.isNotEmpty ? name[0].toUpperCase() : '?',
+                style: const TextStyle(
+                    color: kTeal, fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: const TextStyle(fontSize: 13,
+                    fontWeight: FontWeight.w600, color: Colors.black87)),
+                if (timeStr.isNotEmpty)
+                  Text(timeStr, style: const TextStyle(
+                      fontSize: 11, color: kSage)),
+              ],
+            )),
+
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: _statusColor(status).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(_statusIcon(status),
+                    size: 12, color: _statusColor(status)),
+                const SizedBox(width: 4),
+                Text(status,
+                    style: TextStyle(fontSize: 11,
+                        color: _statusColor(status),
+                        fontWeight: FontWeight.w600)),
+              ]),
+            ),
+          ]),
+
+          if (isPending || isConfirmed) ...[
+            const SizedBox(height: 10),
+            Row(children: [
+              const SizedBox(width: 56),
+
+              if (isPending) ...[
+                _actionBtn(
+                  label: 'Confirm',
+                  color: Colors.green,
+                  icon: Icons.check,
+                  onTap: () => _confirm(id),
+                ),
+                const SizedBox(width: 8),
+                _actionBtn(
+                  label: 'Cancel',
+                  color: kTerra,
+                  icon: Icons.close,
+                  onTap: () => _cancel(id),
+                ),
+              ],
+
+              if (isConfirmed) ...[
+                _actionBtn(
+                  label: 'Completed',
+                  color: kTeal,
+                  icon: Icons.done_all,
+                  onTap: () => _complete(id),
+                ),
+                const SizedBox(width: 8),
+                _actionBtn(
+                  label: 'Cancel',
+                  color: kTerra,
+                  icon: Icons.close,
+                  onTap: () => _cancel(id),
+                ),
+              ],
+            ]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _actionBtn({
+    required String label,
+    required Color color,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) =>
+      GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          decoration: BoxDecoration(
+              color: color, borderRadius: BorderRadius.circular(20)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, color: kWhite, size: 13),
+            const SizedBox(width: 4),
+            Text(label, style: const TextStyle(
+                color: kWhite, fontSize: 11, fontWeight: FontWeight.bold)),
+          ]),
+        ),
+      );
+}
+
+// ── Edit Donation Screen ──────────────────────────────────────────────────────
 class EditDonationScreen extends StatefulWidget {
   final Map<String, dynamic> donation;
   const EditDonationScreen({super.key, required this.donation});
@@ -369,12 +724,9 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
     super.initState();
     final d = widget.donation;
     _titleController       = TextEditingController(text: d['title'] ?? '');
-    _quantityController    = TextEditingController(
-        text: d['quantity']?.toString() ?? '');
-    _addressController     = TextEditingController(
-        text: d['pickupAddress'] ?? '');
-    _descriptionController = TextEditingController(
-        text: d['description'] ?? '');
+    _quantityController    = TextEditingController(text: d['quantity']?.toString() ?? '');
+    _addressController     = TextEditingController(text: d['pickupAddress'] ?? '');
+    _descriptionController = TextEditingController(text: d['description'] ?? '');
     _selectedCategory      = d['category'] as String?;
     _isUrgent              = d['isUrgent'] == true;
     _existingPhotoUrl      = d['photoUrl'] as String?;
@@ -494,10 +846,10 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
     if (_addressController.text.trim().isEmpty) {
       _snack('Please enter a pickup address'); return;
     }
-
     setState(() => _isLoading = true);
     try {
       final id      = widget.donation['id'] as String;
+      // ✅ PUT /api/v1/donations/{id}
       final uri     = Uri.parse('$baseUrl/donations/$id');
       final request = http.MultipartRequest('PUT', uri);
       final token   = AppToken.get();
@@ -512,9 +864,7 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
       if (_descriptionController.text.trim().isNotEmpty) {
         request.fields['description'] = _descriptionController.text.trim();
       }
-      if (_expiresAt != null) {
-        request.fields['expiresAt'] = _expiresAtDisplay;
-      }
+      if (_expiresAt != null) request.fields['expiresAt'] = _expiresAtDisplay;
       if (_latitude  != null) request.fields['latitude']  = _latitude.toString();
       if (_longitude != null) request.fields['longitude'] = _longitude.toString();
       if (_photoBytes != null) {
@@ -524,8 +874,6 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
 
       final streamed = await request.send();
       final response = await http.Response.fromStream(streamed);
-      debugPrint('[Edit] ${response.statusCode} ${response.body}');
-
       if (response.statusCode >= 200 && response.statusCode < 300) {
         if (!mounted) return;
         Navigator.pop(context, true);
@@ -546,51 +894,36 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
   @override
   Widget build(BuildContext context) {
     const base = 'https://gasp-test-production.up.railway.app/';
-
     return Scaffold(
       backgroundColor: kSand,
       body: Column(children: [
-        // Header
         Container(
           color: kSand,
           padding: const EdgeInsets.fromLTRB(16, 56, 16, 12),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              const Text('Edit Donation',
-                  style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: kTeal)),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: const Icon(Icons.arrow_back_ios,
-                      color: kTeal, size: 20),
-                ),
+          child: Stack(alignment: Alignment.center, children: [
+            const Text('Edit Donation', style: TextStyle(fontSize: 20,
+                fontWeight: FontWeight.bold, color: kTeal)),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: const Icon(Icons.arrow_back_ios, color: kTeal, size: 20),
               ),
-            ],
-          ),
+            ),
+          ]),
         ),
-
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-
-                // Photo
                 GestureDetector(
                   onTap: _pickPhoto,
                   child: Container(
                     width: double.infinity, height: 130,
                     decoration: BoxDecoration(
                       border: Border.all(
-                          color: _hasPhoto
-                              ? Colors.transparent
-                              : kTeal,
+                          color: _hasPhoto ? Colors.transparent : kTeal,
                           width: 1.5),
                       borderRadius: BorderRadius.circular(12),
                       color: kWhite,
@@ -598,8 +931,8 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: _hasNewPhoto
-                          ? Image.memory(_photoBytes!,
-                              fit: BoxFit.cover, width: double.infinity)
+                          ? Image.memory(_photoBytes!, fit: BoxFit.cover,
+                              width: double.infinity)
                           : (_existingPhotoUrl != null &&
                                   _existingPhotoUrl!.isNotEmpty)
                               ? Stack(fit: StackFit.expand, children: [
@@ -613,23 +946,19 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                                   ),
                                   Container(
                                     color: Colors.black12,
-                                    child: const Center(
-                                      child: Icon(Icons.edit,
-                                          color: kWhite, size: 28),
-                                    ),
+                                    child: const Center(child: Icon(
+                                        Icons.edit, color: kWhite, size: 28)),
                                   ),
                                 ])
                               : _photoPlaceholder(),
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 16),
                 _label('Title *'),
                 const SizedBox(height: 6),
                 _box(TextField(controller: _titleController,
                     decoration: _deco('Write A Title'))),
-
                 const SizedBox(height: 14),
                 _label('Category *'),
                 const SizedBox(height: 6),
@@ -640,14 +969,12 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                   decoration: const InputDecoration(
                     border: InputBorder.none, isDense: true,
                     contentPadding: EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 14),
-                  ),
+                        horizontal: 14, vertical: 14)),
                   items: _categories.map((c) => DropdownMenuItem(
                       value: c['value'],
                       child: Text(c['label']!))).toList(),
                   onChanged: (v) => setState(() => _selectedCategory = v),
                 )),
-
                 const SizedBox(height: 14),
                 Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                   Expanded(child: Column(
@@ -673,8 +1000,7 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                           decoration: BoxDecoration(color: kWhite,
                               borderRadius: BorderRadius.circular(10)),
                           child: Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Expanded(child: Text(_expiresAtDisplay,
                                   style: TextStyle(fontSize: 12,
@@ -690,7 +1016,6 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                     ],
                   )),
                 ]),
-
                 const SizedBox(height: 14),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -702,9 +1027,8 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                     children: [
                       Column(crossAxisAlignment: CrossAxisAlignment.start,
                         children: const [
-                          Text('Mark As Urgent', style: TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.w600,
-                              color: Colors.black87)),
+                          Text('Mark As Urgent', style: TextStyle(fontSize: 13,
+                              fontWeight: FontWeight.w600, color: Colors.black87)),
                           SizedBox(height: 2),
                           Text('Donation needed immediately',
                               style: TextStyle(fontSize: 11, color: kSage)),
@@ -715,15 +1039,12 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 14),
                 _label('Pickup Address *'),
                 const SizedBox(height: 6),
                 _box(Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(children: [
                         GestureDetector(
@@ -746,34 +1067,29 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                         const SizedBox(width: 10),
                         Expanded(child: TextField(
                           controller: _addressController,
-                          style: const TextStyle(
-                              fontSize: 13, color: Colors.black87),
+                          style: const TextStyle(fontSize: 13, color: Colors.black87),
                           decoration: const InputDecoration(
                             hintText: 'Or type your address…',
                             hintStyle: TextStyle(color: kSage, fontSize: 12),
                             border: InputBorder.none, isDense: true,
-                            contentPadding: EdgeInsets.zero,
-                          ),
+                            contentPadding: EdgeInsets.zero),
                         )),
                       ]),
                       if (_latitude != null && _longitude != null) ...[
                         const SizedBox(height: 6),
                         Row(children: [
-                          const Icon(Icons.location_on,
-                              size: 12, color: kTeal),
+                          const Icon(Icons.location_on, size: 12, color: kTeal),
                           const SizedBox(width: 4),
                           Text(
                             'lat: ${_latitude!.toStringAsFixed(5)}, '
                             'lng: ${_longitude!.toStringAsFixed(5)}',
-                            style: const TextStyle(
-                                fontSize: 11, color: kTeal),
+                            style: const TextStyle(fontSize: 11, color: kTeal),
                           ),
                         ]),
                       ],
                     ],
                   ),
                 )),
-
                 const SizedBox(height: 14),
                 _label('Pickup Type *'),
                 const SizedBox(height: 8),
@@ -782,18 +1098,12 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                   const SizedBox(width: 24),
                   _pickupToggle('Public Place'),
                 ]),
-
                 const SizedBox(height: 14),
                 _label('About Your Donation'),
                 const SizedBox(height: 6),
-                _box(TextField(
-                  controller: _descriptionController,
-                  maxLines: 3,
-                  decoration: _deco('Describe Your Donation'),
-                )),
-
+                _box(TextField(controller: _descriptionController, maxLines: 3,
+                    decoration: _deco('Describe Your Donation'))),
                 const SizedBox(height: 28),
-
                 Center(
                   child: SizedBox(
                     width: 200, height: 50,
@@ -810,9 +1120,9 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                               child: CircularProgressIndicator(
                                   color: kWhite, strokeWidth: 2))
                           : const Icon(Icons.check, color: kWhite, size: 20),
-                      label: const Text('Save Changes',
-                          style: TextStyle(fontSize: 15,
-                              fontWeight: FontWeight.bold, color: kWhite)),
+                      label: const Text('Save Changes', style: TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.bold,
+                          color: kWhite)),
                     ),
                   ),
                 ),
@@ -835,9 +1145,8 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
         ],
       );
 
-  Widget _label(String t) => Text(t,
-      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
-          color: Colors.black87));
+  Widget _label(String t) => Text(t, style: const TextStyle(
+      fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87));
 
   Widget _box(Widget child) => Container(
       decoration: BoxDecoration(color: kWhite,
@@ -848,8 +1157,7 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
       hintText: hint,
       hintStyle: const TextStyle(color: kSage, fontSize: 13),
       border: InputBorder.none, isDense: true,
-      contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14, vertical: 14));
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14));
 
   Widget _pickupToggle(String label) {
     final bool active = _pickupTypeKey == label;
@@ -864,8 +1172,7 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
               borderRadius: BorderRadius.circular(10)),
           child: AnimatedAlign(
             duration: const Duration(milliseconds: 200),
-            alignment: active
-                ? Alignment.centerRight : Alignment.centerLeft,
+            alignment: active ? Alignment.centerRight : Alignment.centerLeft,
             child: Container(
               margin: const EdgeInsets.all(2),
               width: 16, height: 16,
@@ -877,170 +1184,7 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
         const SizedBox(width: 6),
         Text(label, style: TextStyle(fontSize: 13,
             color: active ? kTeal : kSage,
-            fontWeight: active
-                ? FontWeight.w600 : FontWeight.normal)),
-      ]),
-    );
-  }
-}
-
-// ── Reservations bottom sheet ──────────────────────────────────────────────────
-class _ReservationsSheet extends StatefulWidget {
-  final Map<String, dynamic> donation;
-  final Map<String, String>  headers;
-  final String               baseUrl;
-  const _ReservationsSheet({
-    required this.donation,
-    required this.headers,
-    required this.baseUrl,
-  });
-
-  @override
-  State<_ReservationsSheet> createState() => _ReservationsSheetState();
-}
-
-class _ReservationsSheetState extends State<_ReservationsSheet> {
-  List<Map<String, dynamic>> _reservations = [];
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetch();
-  }
-
-  Future<void> _fetch() async {
-    try {
-      final id  = widget.donation['id'];
-      final res = await http.get(
-        Uri.parse('${widget.baseUrl}/donations/$id/reservations'),
-        headers: widget.headers,
-      );
-      debugPrint('[Reservations] ${res.statusCode} ${res.body}');
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      final data = body['data'];
-      List list  = [];
-      if (data is List) list = data;
-      if (data is Map && data['reservations'] is List) {
-        list = data['reservations'];
-      }
-      setState(() {
-        _reservations = List<Map<String, dynamic>>.from(list);
-        _loading = false;
-      });
-    } catch (_) {
-      setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _accept(String id) async {
-    await http.patch(
-        Uri.parse('${widget.baseUrl}/reservations/$id/accept'),
-        headers: widget.headers);
-    _fetch();
-  }
-
-  Future<void> _decline(String id) async {
-    await http.patch(
-        Uri.parse('${widget.baseUrl}/reservations/$id/decline'),
-        headers: widget.headers);
-    _fetch();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 40, height: 4,
-            decoration: BoxDecoration(color: kSage,
-                borderRadius: BorderRadius.circular(2))),
-        const SizedBox(height: 16),
-        Text('Reservations for "${widget.donation['title']}"',
-            style: const TextStyle(fontSize: 15,
-                fontWeight: FontWeight.bold, color: kTeal)),
-        const SizedBox(height: 16),
-        if (_loading)
-          const Padding(padding: EdgeInsets.all(24),
-              child: CircularProgressIndicator(color: kTeal))
-        else if (_reservations.isEmpty)
-          const Padding(padding: EdgeInsets.all(24),
-              child: Text('No reservations yet',
-                  style: TextStyle(color: kSage)))
-        else
-          ConstrainedBox(
-            constraints: BoxConstraints(
-                maxHeight:
-                    MediaQuery.of(context).size.height * 0.5),
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: _reservations.length,
-              separatorBuilder: (_, __) =>
-                  const Divider(height: 1, color: Color(0xFFEEEEEE)),
-              itemBuilder: (_, i) => _tile(_reservations[i]),
-            ),
-          ),
-      ]),
-    );
-  }
-
-  Widget _tile(Map<String, dynamic> r) {
-    final requester = r['requester'] ?? r['user'] ?? {};
-    final name      = requester['name'] ?? 'Unknown';
-    final status    = r['status'] ?? 'pending';
-    final isPending = status == 'pending';
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(children: [
-        CircleAvatar(
-          radius: 20,
-          backgroundColor: kSage.withOpacity(0.3),
-          child: Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
-              style: const TextStyle(
-                  color: kTeal, fontWeight: FontWeight.bold)),
-        ),
-        const SizedBox(width: 12),
-        Expanded(child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(name, style: const TextStyle(fontSize: 13,
-                fontWeight: FontWeight.w600, color: Colors.black87)),
-            Text(status, style: TextStyle(fontSize: 11,
-                color: isPending ? kTerra : Colors.green)),
-          ],
-        )),
-        if (isPending) ...[
-          GestureDetector(
-            onTap: () => _accept(r['id']),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(color: Colors.green,
-                  borderRadius: BorderRadius.circular(20)),
-              child: const Text('Accept', style: TextStyle(
-                  color: kWhite, fontSize: 11,
-                  fontWeight: FontWeight.bold)),
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () => _decline(r['id']),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(color: kTerra,
-                  borderRadius: BorderRadius.circular(20)),
-              child: const Text('Decline', style: TextStyle(
-                  color: kWhite, fontSize: 11,
-                  fontWeight: FontWeight.bold)),
-            ),
-          ),
-        ],
+            fontWeight: active ? FontWeight.w600 : FontWeight.normal)),
       ]),
     );
   }

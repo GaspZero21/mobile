@@ -25,41 +25,56 @@ class DonationService {
   // ── Ensure DONATOR role + fresh token ────────────────────────────────────────
 
   Future<void> _ensureDonatorRole() async {
-    final token = AppToken.get();
-    if (token == null) return;
+  final token        = AppToken.get();
+  final refreshToken = AppToken.getRefreshToken(); // ← ADD
 
-    final headers = {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer $token",
-    };
+  if (token == null) return;
+  if (refreshToken == null) {                       // ← ADD
+    debugPrint('[Role] ❌ No refresh token');        // ← ADD
+    return;                                         // ← ADD
+  }                                                 // ← ADD
 
-    // 1. Assign DONATOR role (409 = already has it, that's fine)
-    final roleRes = await http.post(
-      Uri.parse("$baseUrl/users/me/roles"),
-      headers: headers,
-      body: jsonEncode({"role": "DONATOR"}),
-    );
-    debugPrint('[Role] ${roleRes.statusCode} ${roleRes.body}');
+  final headers = {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer $token",
+  };
 
-    // 2. Refresh token so new role is included in JWT claims
-    final refreshRes = await http.post(
-      Uri.parse("$baseUrl/auth/refresh"),
-      headers: headers,
-    );
-    debugPrint('[Refresh] ${refreshRes.statusCode} ${refreshRes.body}');
+  // 1. Assign DONATOR role
+  final roleRes = await http.post(
+    Uri.parse("$baseUrl/users/me/roles"),
+    headers: headers,
+    body: jsonEncode({"role": "DONATOR"}),
+  );
+  debugPrint('[Role] ${roleRes.statusCode} ${roleRes.body}');
 
-    if (refreshRes.statusCode >= 200 && refreshRes.statusCode < 300) {
-      final data = jsonDecode(refreshRes.body) as Map<String, dynamic>;
-      final newToken =
-          data['data']?['accessToken'] as String? ??
-          data['data']?['token'] as String? ??
-          data['accessToken'] as String?;
-      if (newToken != null && newToken.isNotEmpty) {
-        AppToken.set(newToken);
-        debugPrint('[Refresh] ✅ Token refreshed with DONATOR role');
-      }
+  // 2. Refresh token — send in BODY not header      ← CHANGED
+  final refreshRes = await http.post(
+    Uri.parse("$baseUrl/auth/refresh"),
+    headers: {"Content-Type": "application/json"},  // ← no Authorization header
+    body: jsonEncode({"refreshToken": refreshToken}), // ← KEY FIX
+  );
+  debugPrint('[Refresh] ${refreshRes.statusCode} ${refreshRes.body}');
+
+  if (refreshRes.statusCode >= 200 && refreshRes.statusCode < 300) {
+    final data = jsonDecode(refreshRes.body) as Map<String, dynamic>;
+    final newAccess =
+        data['data']?['accessToken'] as String? ??
+        data['data']?['token'] as String? ??
+        data['accessToken'] as String?;
+    final newRefresh =
+        data['data']?['refreshToken'] as String? ?? // ← ADD
+        data['refreshToken'] as String?;             // ← ADD
+
+    if (newAccess != null && newAccess.isNotEmpty) {
+      AppToken.set(newAccess);
+      debugPrint('[Refresh] ✅ Access token refreshed');
     }
+    if (newRefresh != null && newRefresh.isNotEmpty) { // ← ADD
+      AppToken.setRefreshToken(newRefresh);             // ← ADD
+      debugPrint('[Refresh] ✅ Refresh token updated'); // ← ADD
+    }                                                   // ← ADD
   }
+}
 
   // ── GET all donations ─────────────────────────────────────────────────────────
 
