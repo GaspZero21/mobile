@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 import '../services/chat_service.dart';
 import '../services/app_token.dart';
-import '../widgets/shared_bottom_nav.dart';
 
 class ChatScreen extends StatefulWidget {
   final String reservationId;
@@ -26,15 +25,16 @@ class _ChatScreenState extends State<ChatScreen> {
   final _msgController = TextEditingController();
   final _scrollCtrl    = ScrollController();
   List<Map<String, dynamic>> _messages = [];
-  bool    _sending  = false;
-  bool    _loading  = true;
-  Timer?  _pollTimer;
+  bool   _sending = false;
+  bool   _loading = true;
+  Timer? _pollTimer;
   String? _myUserId;
 
   @override
   void initState() {
     super.initState();
-    _myUserId = _parseUserId(AppToken.get());
+    _myUserId = AppToken.getUserId(); // ← stored at login, no JWT decode needed
+    debugPrint('[Chat] myUserId = $_myUserId');
     _fetch();
     _pollTimer = Timer.periodic(
         const Duration(seconds: 5), (_) => _fetch(silent: true));
@@ -48,35 +48,15 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  /// Decode the JWT payload to extract the userId claim
-  String? _parseUserId(String? token) {
-    if (token == null) return null;
-    try {
-      final parts = token.split('.');
-      if (parts.length != 3) return null;
-      final payload = parts[1];
-      // Base64 padding
-      final padded = payload.padRight(
-          payload.length + (4 - payload.length % 4) % 4, '=');
-      final decoded = String.fromCharCodes(
-          Uri.decodeFull(padded
-                  .replaceAll('-', '+')
-                  .replaceAll('_', '/'))
-              .codeUnits);
-      final json = Map<String, dynamic>.from(
-          jsonDecode(decoded) as Map);
-      return json['userId']?.toString() ??
-          json['sub']?.toString() ??
-          json['id']?.toString();
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<void> _fetch({bool silent = false}) async {
     try {
       final data = await ChatService().getChat(widget.reservationId);
+      debugPrint('[Chat] raw keys: ${data.keys}');
       final msgs = _extractMessages(data);
+      if (msgs.isNotEmpty) {
+        debugPrint('[Chat] first msg keys: ${msgs.first.keys}');
+        debugPrint('[Chat] first msg: ${msgs.first}');
+      }
       if (!mounted) return;
       setState(() {
         _messages = msgs;
@@ -84,6 +64,7 @@ class _ChatScreenState extends State<ChatScreen> {
       });
       _scrollToBottom();
     } catch (e) {
+      debugPrint('[Chat] fetch error: $e');
       if (!mounted) return;
       if (!silent) setState(() => _loading = false);
     }
@@ -129,7 +110,8 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
+        SnackBar(
+            content: Text('Failed: $e'), backgroundColor: Colors.red),
       );
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -137,11 +119,19 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   bool _isMe(Map<String, dynamic> msg) {
-    final senderId = msg['senderId']?.toString() ??
-        msg['sender']?['id']?.toString();
+    // Primary: match stored userId against senderId field
+    final senderId =
+        msg['senderId']?.toString() ??
+        msg['sender']?['id']?.toString() ??
+        msg['sender']?['_id']?.toString() ??
+        msg['userId']?.toString();
+
+    debugPrint('[Chat] senderId=$senderId myUserId=$_myUserId');
+
     if (_myUserId != null && senderId != null) {
       return senderId == _myUserId;
     }
+    // Fallback: API-provided flags
     return msg['isMe'] == true || msg['isMine'] == true;
   }
 

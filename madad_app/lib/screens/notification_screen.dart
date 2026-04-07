@@ -12,8 +12,8 @@ class NotificationScreen extends StatefulWidget {
 
 class _NotificationScreenState extends State<NotificationScreen> {
   List<Map<String, dynamic>> _notifications = [];
-  int  _unreadCount = 0;
-  bool _isLoading   = true;
+  int     _unreadCount = 0;
+  bool    _isLoading   = true;
   String? _error;
 
   @override
@@ -41,7 +41,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
   Future<void> _markAllRead() async {
     await NotificationService().markAllRead();
     setState(() {
-      for (final n in _notifications) n['isRead'] = true;
+      for (final n in _notifications) { n['isRead'] = true; }
       _unreadCount = 0;
     });
   }
@@ -78,7 +78,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   String _timeAgo(String? iso) {
     if (iso == null) return '';
-    final dt   = DateTime.tryParse(iso);
+    final dt = DateTime.tryParse(iso);
     if (dt == null) return '';
     final diff = DateTime.now().difference(dt);
     if (diff.inMinutes < 1)  return 'just now';
@@ -126,13 +126,15 @@ class _NotificationScreenState extends State<NotificationScreen> {
           // ── Body
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: kTeal))
+                ? const Center(
+                    child: CircularProgressIndicator(color: kTeal))
                 : _error != null
                     ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.wifi_off, color: kSage, size: 36),
+                            const Icon(Icons.wifi_off,
+                                color: kSage, size: 36),
                             const SizedBox(height: 8),
                             Text(_error!,
                                 style: const TextStyle(
@@ -163,10 +165,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
                             color: kTeal,
                             onRefresh: _fetch,
                             child: ListView.separated(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 8),
                               itemCount: _notifications.length,
-                              separatorBuilder: (_, __) => const Divider(
-                                  height: 1, indent: 72, color: Color(0xFFE0E0E0)),
+                              separatorBuilder: (_, _) => const Divider(
+                                  height: 1,
+                                  indent: 72,
+                                  color: Color(0xFFE0E0E0)),
                               itemBuilder: (_, i) =>
                                   _buildItem(_notifications[i]),
                             ),
@@ -174,19 +179,22 @@ class _NotificationScreenState extends State<NotificationScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: const SharedBottomNav(currentIndex: 1),
+      bottomNavigationBar: const SharedBottomNav(currentIndex: 3), // ← fixed
     );
   }
 
   Widget _buildItem(Map<String, dynamic> n) {
-    final bool   isRead = n['isRead'] == true;
-    final String? type  = n['type'] as String?;
+    final bool    isRead = n['isRead'] == true;
+    final String? type   = n['type'] as String?;
 
     return InkWell(
       onTap: () => _markRead(n),
       child: Container(
-        color: isRead ? Colors.transparent : kTeal.withOpacity(0.05),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        color: isRead
+            ? Colors.transparent
+            : kTeal.withValues(alpha: 0.05),
+        padding: const EdgeInsets.symmetric(
+            horizontal: 16, vertical: 14),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -194,10 +202,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
             Container(
               width: 44, height: 44,
               decoration: BoxDecoration(
-                color: _colorFor(type).withOpacity(0.12),
+                color: _colorFor(type).withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
-              child: Icon(_iconFor(type), color: _colorFor(type), size: 22),
+              child: Icon(_iconFor(type),
+                  color: _colorFor(type), size: 22),
             ),
             const SizedBox(width: 12),
 
@@ -226,7 +235,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   const SizedBox(height: 4),
                   Text(n['message'] ?? '',
                       style: const TextStyle(
-                          fontSize: 12, color: kSage, height: 1.4)),
+                          fontSize: 12,
+                          color: kSage,
+                          height: 1.4)),
                 ],
               ),
             ),

@@ -7,34 +7,44 @@ class AuthService {
   static const String baseUrl =
       "https://gasp-test-production.up.railway.app/api/v1";
 
-  // ── Token ────────────────────────────────────────────────────────────────────
-
+  // ── Token ──────────────────────────────────────────────────────────────────
   static void _saveToken(Map<String, dynamic> responseData) {
-  final token = responseData['data']?['accessToken'] as String?;
-  final refresh = responseData['data']?['refreshToken'] as String?; // ← ADD
+    final token   = responseData['data']?['accessToken'] as String?;
+    final refresh = responseData['data']?['refreshToken'] as String?;
+    final userId  =
+        responseData['data']?['user']?['id'] as String? ??
+        responseData['data']?['userId'] as String? ??
+        responseData['data']?['user']?['_id'] as String?;
 
-  if (token != null && token.isNotEmpty) {
-    AppToken.set(token);
-    debugPrint('[Auth] ✅ Access token saved (${token.substring(0, 20)}...)');
-  } else {
-    debugPrint('[Auth] ⚠️  accessToken not found. Keys: ${responseData.keys}');
+    if (token != null && token.isNotEmpty) {
+      AppToken.set(token);
+      debugPrint('[Auth] ✅ Access token saved (${token.substring(0, 20)}...)');
+    } else {
+      debugPrint('[Auth] ⚠️  accessToken not found. Keys: ${responseData.keys}');
+    }
+
+    if (refresh != null && refresh.isNotEmpty) {
+      AppToken.setRefreshToken(refresh);
+      debugPrint('[Auth] ✅ Refresh token saved');
+    } else {
+      debugPrint('[Auth] ⚠️  refreshToken not found');
+    }
+
+    if (userId != null && userId.isNotEmpty) {
+      AppToken.setUserId(userId);
+      debugPrint('[Auth] ✅ UserId saved: $userId');
+    } else {
+      debugPrint('[Auth] ⚠️  userId not found in response');
+      debugPrint('[Auth] data keys: ${responseData['data']?.keys}');
+    }
   }
-
-  if (refresh != null && refresh.isNotEmpty) {             // ← ADD
-    AppToken.setRefreshToken(refresh);                      // ← ADD
-    debugPrint('[Auth] ✅ Refresh token saved');             // ← ADD
-  } else {                                                  // ← ADD
-    debugPrint('[Auth] ⚠️  refreshToken not found');        // ← ADD
-  }                                                         // ← ADD
-}
 
   static void logout() {
     AppToken.clear();
-    debugPrint('[Auth] Token cleared');
+    debugPrint('[Auth] All tokens cleared');
   }
 
-  // ── Register ─────────────────────────────────────────────────────────────────
-
+  // ── Register ───────────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> register({
     required String name,
     required String email,
@@ -52,12 +62,10 @@ class AuthService {
           "phoneNumber": phoneNumber,
       }),
     );
-    // Don't save token yet — user must verify email first
     return _handle(response);
   }
 
-  // ── Verify email (after registration) ────────────────────────────────────────
-
+  // ── Verify email ───────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> verifyEmail({
     required String email,
     required String otp,
@@ -68,13 +76,11 @@ class AuthService {
       body: jsonEncode({"email": email, "otp": otp}),
     );
     final data = _handle(response);
-    // API may return token after verification — save it if present
     _saveToken(data);
     return data;
   }
 
-  // ── Resend verification OTP ───────────────────────────────────────────────────
-
+  // ── Resend verification ────────────────────────────────────────────────────
   Future<Map<String, dynamic>> resendVerification(String email) async {
     final response = await http.post(
       Uri.parse("$baseUrl/auth/resend-verification"),
@@ -84,8 +90,7 @@ class AuthService {
     return _handle(response);
   }
 
-  // ── Login ─────────────────────────────────────────────────────────────────────
-
+  // ── Login ──────────────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
@@ -100,8 +105,7 @@ class AuthService {
     return data;
   }
 
-  // ── Forgot password ───────────────────────────────────────────────────────────
-
+  // ── Forgot password ────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> forgotPassword(String email) async {
     final response = await http.post(
       Uri.parse("$baseUrl/auth/forgot-password"),
@@ -111,8 +115,7 @@ class AuthService {
     return _handle(response);
   }
 
-  // ── Reset password ────────────────────────────────────────────────────────────
-
+  // ── Reset password ─────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> resetPassword({
     required String email,
     required String otp,
@@ -126,8 +129,7 @@ class AuthService {
     return _handle(response);
   }
 
-  // ── Response handler ──────────────────────────────────────────────────────────
-
+  // ── Handler ────────────────────────────────────────────────────────────────
   Map<String, dynamic> _handle(http.Response response) {
     debugPrint('[Auth] ${response.statusCode} ${response.request?.url}');
     debugPrint('[Auth] ${response.body}');
