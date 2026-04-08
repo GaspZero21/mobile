@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../theme/colors.dart';
 import '../widgets/shared_bottom_nav.dart';
 import '../services/donation_service.dart';
+import '../services/app_token.dart';
 import 'add_donation_screen.dart';
 import 'all_donations_screen.dart';
 
@@ -15,9 +18,19 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const String _baseUrl =
+      'https://gasp-test-production.up.railway.app/api/v1';
+
   List<Map<String, dynamic>> _donations = [];
-  bool    _isLoading = true;
+  bool _isLoading = true;
   String? _error;
+
+  // ── Stats
+  int _donationCount = 0;
+  int _requestCount = 0;
+  double _foodSavedKg = 0.0;
+  double _reputation = 0.0;
+  bool _statsLoading = true;
 
   LatLng _mapCenter = const LatLng(35.1897, 0.6456);
   final MapController _mapController = MapController();
@@ -25,11 +38,22 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchDonations();
+    _fetchAll();
+  }
+
+  Future<void> _fetchAll() async {
+    setState(() {
+      _isLoading = true;
+      _statsLoading = true;
+      _error = null;
+    });
+    await Future.wait([
+      _fetchDonations(),
+      _fetchStats(),
+    ]);
   }
 
   Future<void> _fetchDonations() async {
-    setState(() { _isLoading = true; _error = null; });
     try {
       final data = await DonationService().getDonations();
       if (!mounted) return;
@@ -51,20 +75,194 @@ class _HomeScreenState extends State<HomeScreen> {
       });
 
       if (firstCoord != null) {
-        try { _mapController.move(firstCoord, 13); } catch (_) {}
+        try {
+          _mapController.move(firstCoord, 13);
+        } catch (_) {}
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() { _error = e.toString(); _isLoading = false; });
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
     }
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // STATS — uses the same two endpoints confirmed in the Swagger screenshots:
+  //   GET /api/v1/donations/my   →  donor's own donations
+  //   GET /api/v1/reservations   →  current user's reservations (donor OR beneficiary)
+  //
+  // Reputation comes from the user profile rating field in /users/me
+  // because there is no separate /users/{id}/reputation endpoint visible.
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<void> _fetchStats() async {
+    try {
+      final token = AppToken.get();
+      if (token == null) {
+        if (mounted) setState(() => _statsLoading = false);
+        return;
+      }
+
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      };
+
+      // Fire all three requests in parallel
+      final responses = await Future.wait([
+        http.get(Uri.parse('$_baseUrl/users/me'), headers: headers),        // [0] profile + rating
+        http.get(Uri.parse('$_baseUrl/donations/my'), headers: headers),    // [1] my donations
+        http.get(Uri.parse('$_baseUrl/reservations'), headers: headers),    // [2] my reservations
+      ]);
+
+      if (!mounted) return;
+
+      // ── [0] /users/me  →  reputation / rating
+      if (responses[0].statusCode == 200) {
+        final body = jsonDecode(responses[0].body) as Map<String, dynamic>;
+        // Try every known rating key path
+        _reputation =
+            _pickDouble(body, ['data', 'user', 'rating']) ??
+            _pickDouble(body, ['data', 'user', 'reputation']) ??
+            _pickDouble(body, ['data', 'rating']) ??
+            _pickDouble(body, ['data', 'reputation']) ??
+            0.0;
+      }
+
+      // ── [1] /donations/my  →  donation count + food saved
+      if (responses[1].statusCode == 200) {
+        final body = jsonDecode(responses[1].body) as Map<String, dynamic>;
+
+        // The list lives under one of these paths — try each in order
+        final list =
+            _pickList(body, ['data', 'donations']) ??
+            _pickList(body, ['data', 'data']) ??
+            _pickList(body, ['data']) ??
+            _pickList(body, ['donations']) ??
+            [];
+
+        _donationCount = list.length;
+
+        // Also try top-level count/total field in case the API paginates
+        if (_donationCount == 0) {
+          _donationCount =
+              (_pickNum(body, ['data', 'total']) ??
+               _pickNum(body, ['data', 'count']) ??
+               _pickNum(body, ['total']) ??
+               _pickNum(body, ['count']) ??
+               0)
+              .toInt();
+        }
+
+        // Sum quantity from every possible field name
+        double kg = 0.0;
+        for (final item in list) {
+          if (item is Map) {
+            kg += (_numField(item, 'quantityKg') ??
+                   _numField(item, 'quantity_kg') ??
+                   _numField(item, 'weightKg') ??
+                   _numField(item, 'weight_kg') ??
+                   _numField(item, 'quantity') ??
+                   _numField(item, 'weight') ??
+                   0.0);
+          }
+        }
+        _foodSavedKg = kg;
+
+        debugPrint('[Stats] donations raw body keys: ${body.keys}');
+        debugPrint('[Stats] donation list length: $_donationCount, kg: $_foodSavedKg');
+        if (list.isNotEmpty && list.first is Map) {
+          debugPrint('[Stats] first donation keys: ${(list.first as Map).keys}');
+        }
+      } else {
+        debugPrint('[Stats] /donations/my → ${responses[1].statusCode}: ${responses[1].body}');
+      }
+
+      // ── [2] /reservations  →  reservation count
+      if (responses[2].statusCode == 200) {
+        final body = jsonDecode(responses[2].body) as Map<String, dynamic>;
+
+        final list =
+            _pickList(body, ['data', 'reservations']) ??
+            _pickList(body, ['data', 'data']) ??
+            _pickList(body, ['data']) ??
+            _pickList(body, ['reservations']) ??
+            [];
+
+        _requestCount = list.length;
+
+        if (_requestCount == 0) {
+          _requestCount =
+              (_pickNum(body, ['data', 'total']) ??
+               _pickNum(body, ['data', 'count']) ??
+               _pickNum(body, ['total']) ??
+               _pickNum(body, ['count']) ??
+               0)
+              .toInt();
+        }
+
+        debugPrint('[Stats] reservations raw body keys: ${body.keys}');
+        debugPrint('[Stats] reservation list length: $_requestCount');
+      } else {
+        debugPrint('[Stats] /reservations → ${responses[2].statusCode}: ${responses[2].body}');
+      }
+
+      if (mounted) setState(() => _statsLoading = false);
+    } catch (e, st) {
+      debugPrint('[Stats] error: $e\n$st');
+      if (mounted) setState(() => _statsLoading = false);
+    }
+  }
+
+  // ── Navigation helpers ────────────────────────────────────────────────────
+
+  /// Walk [map] along [keys] and return the value as a List, or null.
+  List<dynamic>? _pickList(Map<String, dynamic> map, List<String> keys) {
+    dynamic cur = map;
+    for (final k in keys) {
+      if (cur is Map && cur.containsKey(k)) {
+        cur = cur[k];
+      } else {
+        return null;
+      }
+    }
+    return cur is List ? cur : null;
+  }
+
+  /// Walk [map] along [keys] and return the value as a num, or null.
+  num? _pickNum(Map<String, dynamic> map, List<String> keys) {
+    dynamic cur = map;
+    for (final k in keys) {
+      if (cur is Map && cur.containsKey(k)) {
+        cur = cur[k];
+      } else {
+        return null;
+      }
+    }
+    return cur is num ? cur : null;
+  }
+
+  /// Walk [map] along [keys] and return as double, or null.
+  double? _pickDouble(Map<String, dynamic> map, List<String> keys) =>
+      _pickNum(map, keys)?.toDouble();
+
+  /// Read a single numeric field from a flat map, return double or null.
+  double? _numField(Map item, String key) {
+    final v = item[key];
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _openAddDonation() async {
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => const AddDonationScreen()),
     );
-    if (result == true) _fetchDonations();
+    if (result == true) _fetchAll();
   }
 
   List<Marker> get _markers => _donations
@@ -75,14 +273,16 @@ class _HomeScreenState extends State<HomeScreen> {
         final urgent = d['isUrgent'] == true;
         return Marker(
           point: LatLng(lat, lng),
-          width: 40, height: 40,
+          width: 40,
+          height: 40,
           child: GestureDetector(
             onTap: () => _showDonationPopup(d),
             child: Icon(Icons.location_on,
                 color: urgent ? kTerra : kTeal, size: 36),
           ),
         );
-      }).toList();
+      })
+      .toList();
 
   void _showDonationPopup(Map<String, dynamic> d) {
     showModalBottomSheet(
@@ -104,7 +304,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(d['title'] ?? '',
                     style: const TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontSize: 14, color: kTeal)),
+                        fontSize: 14,
+                        color: kTeal)),
                 Text(d['pickupAddress'] ?? '',
                     style: const TextStyle(fontSize: 12, color: kSage)),
                 Text(d['status'] ?? '',
@@ -123,12 +324,11 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: kSand,
       body: RefreshIndicator(
         color: kTeal,
-        onRefresh: _fetchDonations,
+        onRefresh: _fetchAll,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
-
               // ── Header
               Container(
                 width: double.infinity,
@@ -159,8 +359,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: TextField(
                             decoration: InputDecoration(
                               hintText: 'Search For Donations',
-                              hintStyle: TextStyle(
-                                  color: kSage, fontSize: 14),
+                              hintStyle: TextStyle(color: kSage, fontSize: 14),
                               border: InputBorder.none,
                               isDense: true,
                               contentPadding:
@@ -169,7 +368,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                         Container(
-                          width: 50, height: 50,
+                          width: 50,
+                          height: 50,
                           decoration: const BoxDecoration(
                             color: kTerra,
                             borderRadius: BorderRadius.only(
@@ -192,7 +392,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-
                     // Live Map
                     Container(
                       margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -238,10 +437,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
 
-                    // ── Nearby Donations heading + View All link
+                    // ── Nearby Donations heading + View All
                     Padding(
-                      padding:
-                          const EdgeInsets.fromLTRB(16, 18, 16, 10),
+                      padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -254,8 +452,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             onTap: () => Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (_) =>
-                                      const AllDonationsScreen()),
+                                  builder: (_) => const AllDonationsScreen()),
                             ),
                             child: Row(children: const [
                               Text('View All',
@@ -277,8 +474,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       height: 230,
                       child: _isLoading
                           ? const Center(
-                              child: CircularProgressIndicator(
-                                  color: kTeal))
+                              child: CircularProgressIndicator(color: kTeal))
                           : _error != null
                               ? Center(
                                   child: Column(
@@ -288,16 +484,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                       const Icon(Icons.wifi_off,
                                           color: kSage, size: 32),
                                       const SizedBox(height: 8),
-                                      const Text(
-                                          'Could not load donations',
+                                      const Text('Could not load donations',
                                           style: TextStyle(
-                                              color: kSage,
-                                              fontSize: 13)),
+                                              color: kSage, fontSize: 13)),
                                       TextButton(
-                                        onPressed: _fetchDonations,
+                                        onPressed: _fetchAll,
                                         child: const Text('Retry',
-                                            style: TextStyle(
-                                                color: kTeal)),
+                                            style:
+                                                TextStyle(color: kTeal)),
                                       ),
                                     ],
                                   ))
@@ -307,21 +501,18 @@ class _HomeScreenState extends State<HomeScreen> {
                                         mainAxisAlignment:
                                             MainAxisAlignment.center,
                                         children: [
-                                          const Icon(
-                                              Icons.inbox_outlined,
+                                          const Icon(Icons.inbox_outlined,
                                               color: kSage, size: 36),
                                           const SizedBox(height: 8),
                                           const Text(
                                             'No donations yet.\nBe the first to post!',
                                             textAlign: TextAlign.center,
                                             style: TextStyle(
-                                                color: kSage,
-                                                fontSize: 13),
+                                                color: kSage, fontSize: 13),
                                           ),
                                           TextButton(
                                             onPressed: _openAddDonation,
-                                            child: const Text(
-                                                'Post Now',
+                                            child: const Text('Post Now',
                                                 style: TextStyle(
                                                     color: kTeal)),
                                           ),
@@ -329,9 +520,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ))
                                   : ListView.separated(
                                       scrollDirection: Axis.horizontal,
-                                      padding:
-                                          const EdgeInsets.symmetric(
-                                              horizontal: 16),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 16),
                                       itemCount: _donations.length,
                                       separatorBuilder: (_, __) =>
                                           const SizedBox(width: 12),
@@ -344,17 +534,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     // Post button
                     Padding(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: SizedBox(
-                        width: double.infinity, height: 54,
+                        width: double.infinity,
+                        height: 54,
                         child: ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: kTerra,
                             elevation: 0,
                             shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(14)),
+                                borderRadius: BorderRadius.circular(14)),
                           ),
                           onPressed: _openAddDonation,
                           icon: const Icon(Icons.add_circle_outline,
@@ -370,40 +559,60 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     const SizedBox(height: 20),
 
-                    // Stats
+                    // ── Stats card
                     Padding(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
                             color: kWhite,
                             borderRadius: BorderRadius.circular(16)),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Your Activities Statistics',
-                                style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.bold,
-                                    color: kTeal)),
-                            const SizedBox(height: 18),
-                            _buildStat(
-                              'Donations',
-                              _donations.length,
-                              kTeal,
-                              (_donations.length / 10.0).clamp(0.0, 1.0),
-                            ),
-                            const SizedBox(height: 14),
-                            _buildStat('Requests', 0, kTerra, 0.0),
-                            const SizedBox(height: 14),
-                            _buildStat('Food Saved', 0, kTerra, 0.0,
-                                suffix: ' Kg'),
-                            const SizedBox(height: 14),
-                            _buildReputation(),
-                          ],
-                        ),
+                        child: _statsLoading
+                            ? const SizedBox(
+                                height: 120,
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                      color: kTeal),
+                                ),
+                              )
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Your Activity Statistics',
+                                      style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.bold,
+                                          color: kTeal)),
+                                  const SizedBox(height: 18),
+                                  _buildStat(
+                                    'Donations',
+                                    _donationCount,
+                                    kTeal,
+                                    (_donationCount / 10.0).clamp(0.0, 1.0),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  _buildStat(
+                                    'Reservations',
+                                    _requestCount,
+                                    kTerra,
+                                    (_requestCount / 10.0).clamp(0.0, 1.0),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  _buildStat(
+                                    'Food Saved',
+                                    _foodSavedKg > 0
+                                        ? double.parse(
+                                            _foodSavedKg.toStringAsFixed(1))
+                                        : 0,
+                                    kSage,
+                                    (_foodSavedKg / 50.0).clamp(0.0, 1.0),
+                                    suffix: ' Kg',
+                                  ),
+                                  const SizedBox(height: 14),
+                                  _buildReputation(),
+                                ],
+                              ),
                       ),
                     ),
 
@@ -420,11 +629,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildCard(Map<String, dynamic> d) {
-    const String base  = 'https://gasp-test-production.up.railway.app/';
-    final String title = d['title']    ?? 'Donation';
-    final String cat   = d['category'] ?? '';
-    final String status = d['status']  ?? 'available';
-    final bool urgent   = d['isUrgent'] == true;
+    const String base = 'https://gasp-test-production.up.railway.app/';
+    final String title = d['title'] ?? 'Donation';
+    final String cat = d['category'] ?? '';
+    final String status = d['status'] ?? 'available';
+    final bool urgent = d['isUrgent'] == true;
     final Color statusColor =
         status == 'available' ? Colors.green : kTerra;
     final String? photo = d['photoUrl'] as String?;
@@ -442,7 +651,8 @@ class _HomeScreenState extends State<HomeScreen> {
               topRight: Radius.circular(14),
             ),
             child: SizedBox(
-              height: 95, width: 125,
+              height: 95,
+              width: 125,
               child: photo != null && photo.isNotEmpty
                   ? Image.network(
                       photo.startsWith('http') ? photo : '$base$photo',
@@ -491,19 +701,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(cat,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style:
-                        const TextStyle(fontSize: 10, color: kSage)),
+                    style: const TextStyle(fontSize: 10, color: kSage)),
                 const SizedBox(height: 3),
                 Row(children: [
                   Icon(Icons.circle, size: 6, color: statusColor),
                   const SizedBox(width: 4),
                   Text(status,
-                      style: TextStyle(
-                          fontSize: 10, color: statusColor)),
+                      style: TextStyle(fontSize: 10, color: statusColor)),
                 ]),
                 const SizedBox(height: 8),
                 Container(
-                  height: 28, width: double.infinity,
+                  height: 28,
+                  width: double.infinity,
                   decoration: BoxDecoration(
                       color: kTerra,
                       borderRadius: BorderRadius.circular(20)),
@@ -523,21 +732,20 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildStat(String label, int value, Color color, double ratio,
+  Widget _buildStat(String label, num value, Color color, double ratio,
       {String suffix = ''}) {
     return Row(children: [
       SizedBox(
-        width: 85,
+        width: 90,
         child: Text(label,
-            style: const TextStyle(
-                fontSize: 13, color: Colors.black87)),
+            style: const TextStyle(fontSize: 13, color: Colors.black87)),
       ),
       Expanded(
         child: ClipRRect(
           borderRadius: BorderRadius.circular(6),
           child: LinearProgressIndicator(
             value: ratio,
-            backgroundColor: const Color(0xFFE0E0E0),
+            backgroundColor: const Color(0xFFE8E3DA),
             valueColor: AlwaysStoppedAnimation<Color>(color),
             minHeight: 9,
           ),
@@ -553,17 +761,34 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildReputation() {
+    final filled = _reputation.clamp(0.0, 5.0);
     return Row(children: [
       const SizedBox(
-        width: 85,
+        width: 90,
         child: Text('Reputation',
             style: TextStyle(fontSize: 13, color: Colors.black87)),
       ),
       Row(
-        children: List.generate(
-            4,
-            (_) =>
-                const Icon(Icons.star, color: Colors.amber, size: 20)),
+        children: List.generate(5, (i) {
+          final starValue = i + 1;
+          IconData icon;
+          if (filled >= starValue) {
+            icon = Icons.star;
+          } else if (filled >= starValue - 0.5) {
+            icon = Icons.star_half;
+          } else {
+            icon = Icons.star_border;
+          }
+          return Icon(icon, color: Colors.amber, size: 20);
+        }),
+      ),
+      const SizedBox(width: 8),
+      Text(
+        _reputation > 0 ? _reputation.toStringAsFixed(1) : '—',
+        style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.black54),
       ),
     ]);
   }
