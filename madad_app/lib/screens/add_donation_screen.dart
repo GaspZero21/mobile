@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import '../theme/colors.dart';
 import '../services/donation_service.dart';
 import '../widgets/shared_bottom_nav.dart';
+import '../services/image_picker_util.dart';
 
 import 'dart:html' as html;
 
@@ -36,6 +37,11 @@ class _AddDonationScreenState extends State<AddDonationScreen> {
   bool      _isLoading  = false;
   bool      _isLocating = false;
 
+  static const _units = [
+    'kg', 'g', 'L', 'mL', 'pieces', 'portions', 'bags', 'boxes'
+  ];
+  String _selectedUnit = 'kg';
+
   static const _pickupTypes = {
     'Home':         'home',
     'Public Place': 'public_place',
@@ -60,7 +66,7 @@ class _AddDonationScreenState extends State<AddDonationScreen> {
     super.dispose();
   }
 
-  // ── Photo ───────────────────────────────────────────────────────────────────
+  // ── Photo ────────────────────────────────────────────────────────────────
   Future<void> _pickPhoto() async {
     if (kIsWeb) {
       final input = html.FileUploadInputElement()
@@ -82,7 +88,7 @@ class _AddDonationScreenState extends State<AddDonationScreen> {
 
   bool get _hasPhoto => _photoBytes != null || _photoFile != null;
 
-  // ── Date ────────────────────────────────────────────────────────────────────
+  // ── Date ─────────────────────────────────────────────────────────────────
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -105,7 +111,17 @@ class _AddDonationScreenState extends State<AddDonationScreen> {
         '${_expiresAt!.day.toString().padLeft(2, '0')}';
   }
 
-  // ── Locate Me ───────────────────────────────────────────────────────────────
+  // Full ISO-8601 timestamp required by the API
+  String? get _expiresAtIso {
+    if (_expiresAt == null) return null;
+    final d = _expiresAt!;
+    return '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}'
+        'T23:59:59.000Z';
+  }
+
+  // ── Locate Me ────────────────────────────────────────────────────────────
   Future<void> _detectLocation() async {
     setState(() => _isLocating = true);
     try {
@@ -149,21 +165,29 @@ class _AddDonationScreenState extends State<AddDonationScreen> {
     }
   }
 
-  // ── Submit ──────────────────────────────────────────────────────────────────
+  // ── Submit ───────────────────────────────────────────────────────────────
   Future<void> _onPost() async {
-    if (!_hasPhoto)                             { _snack('Please add a photo'); return; }
-    if (_titleController.text.trim().isEmpty)   { _snack('Please enter a title'); return; }
-    if (_selectedCategory == null)              { _snack('Please select a category'); return; }
-    if (_quantityController.text.trim().isEmpty){ _snack('Please enter quantity'); return; }
-    if (_addressController.text.trim().isEmpty) { _snack('Please enter a pickup address'); return; }
+    if (!_hasPhoto)                              { _snack('Please add a photo'); return; }
+    if (_titleController.text.trim().isEmpty)    { _snack('Please enter a title'); return; }
+    if (_selectedCategory == null)               { _snack('Please select a category'); return; }
+    if (_addressController.text.trim().isEmpty)  { _snack('Please enter a pickup address'); return; }
+
+    // Validate quantity is a valid positive number
+    final qtyText = _quantityController.text.trim();
+    if (qtyText.isEmpty) { _snack('Please enter quantity'); return; }
+    final totalQuantity = double.tryParse(qtyText);
+    if (totalQuantity == null || totalQuantity <= 0) {
+      _snack('Quantity must be a positive number');
+      return;
+    }
 
     setState(() => _isLoading = true);
     try {
-      // createDonation handles role assignment + token refresh internally
       await DonationService().createDonation(
         title:         _titleController.text.trim(),
         category:      _selectedCategory!,
-        quantity:      _quantityController.text.trim(), // String e.g. "5 kg"
+        totalQuantity: totalQuantity,        // ← number
+        quantityUnit:  _selectedUnit,        // ← unit
         pickupAddress: _addressController.text.trim(),
         pickupType:    _pickupTypes[_pickupTypeKey]!,
         photoFile:     _photoFile,
@@ -171,7 +195,7 @@ class _AddDonationScreenState extends State<AddDonationScreen> {
         photoName:     _photoName ?? 'photo.jpg',
         description:   _descriptionController.text.trim(),
         isUrgent:      _isUrgent,
-        expiresAt:     _expiresAt == null ? null : _expiresAtDisplay,
+        expiresAt:     _expiresAtIso,
         latitude:      _latitude,
         longitude:     _longitude,
       );
@@ -179,7 +203,9 @@ class _AddDonationScreenState extends State<AddDonationScreen> {
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      _snack('Failed to post: $e');
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      _snack('Failed to post: $msg');
+      debugPrint('[AddDonation] ERROR: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -188,7 +214,7 @@ class _AddDonationScreenState extends State<AddDonationScreen> {
   void _snack(String msg) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 
-  // ── Build ───────────────────────────────────────────────────────────────────
+  // ── Build ────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -296,62 +322,105 @@ class _AddDonationScreenState extends State<AddDonationScreen> {
 
                   const SizedBox(height: 14),
 
-                  // ── Quantity + Expiry row
+                  // ── Quantity + Unit
+                  _label('Quantity *'),
+                  const SizedBox(height: 6),
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _label('Quantity *'),
-                            const SizedBox(height: 6),
-                            _box(TextField(
-                              controller: _quantityController,
-                              decoration: _deco('e.g. 5 kg'),
-                            )),
-                          ],
-                        ),
+                        flex: 3,
+                        child: _box(TextField(
+                          controller: _quantityController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          decoration: _deco('e.g. 5'),
+                          onChanged: (_) => setState(() {}),
+                        )),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _label('Expiration Date'),
-                            const SizedBox(height: 6),
-                            GestureDetector(
-                              onTap: _pickDate,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 13),
-                                decoration: BoxDecoration(
-                                    color: kWhite,
-                                    borderRadius:
-                                        BorderRadius.circular(10)),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Expanded(
-                                      child: Text(_expiresAtDisplay,
-                                          style: TextStyle(
-                                              fontSize: 12,
-                                              color: _expiresAt == null
-                                                  ? kSage
-                                                  : Colors.black87),
-                                          overflow: TextOverflow.ellipsis),
-                                    ),
-                                    const Icon(Icons.keyboard_arrow_down,
-                                        color: kSage, size: 20),
-                                  ],
-                                ),
-                              ),
+                        flex: 2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 2),
+                          decoration: BoxDecoration(
+                              color: kWhite,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                  color: kTeal.withOpacity(0.4),
+                                  width: 1.2)),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _selectedUnit,
+                              isDense: true,
+                              style: const TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.black87,
+                                  fontWeight: FontWeight.w600),
+                              icon: const Icon(Icons.keyboard_arrow_down,
+                                  color: kSage, size: 20),
+                              items: _units
+                                  .map((u) => DropdownMenuItem(
+                                      value: u, child: Text(u)))
+                                  .toList(),
+                              onChanged: (v) {
+                                if (v != null) {
+                                  setState(() => _selectedUnit = v);
+                                }
+                              },
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ],
+                  ),
+                  if (_quantityController.text.trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, left: 4),
+                      child: Row(children: [
+                        const Icon(Icons.info_outline,
+                            size: 12, color: kTeal),
+                        const SizedBox(width: 4),
+                        Text(
+                          'totalQuantity: ${_quantityController.text.trim()}, '
+                          'quantityUnit: $_selectedUnit',
+                          style:
+                              const TextStyle(fontSize: 10, color: kTeal),
+                        ),
+                      ]),
+                    ),
+
+                  const SizedBox(height: 14),
+
+                  // ── Expiry date
+                  _label('Expiration Date'),
+                  const SizedBox(height: 6),
+                  GestureDetector(
+                    onTap: _pickDate,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 13),
+                      decoration: BoxDecoration(
+                          color: kWhite,
+                          borderRadius: BorderRadius.circular(10)),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(_expiresAtDisplay,
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: _expiresAt == null
+                                        ? kSage
+                                        : Colors.black87),
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                          const Icon(Icons.keyboard_arrow_down,
+                              color: kSage, size: 20),
+                        ],
+                      ),
+                    ),
                   ),
 
                   const SizedBox(height: 14),
@@ -518,7 +587,7 @@ class _AddDonationScreenState extends State<AddDonationScreen> {
     );
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
+  // ── Helpers ──────────────────────────────────────────────────────────────
 
   Widget _label(String t) => Text(t,
       style: const TextStyle(

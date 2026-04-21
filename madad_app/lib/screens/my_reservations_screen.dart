@@ -18,10 +18,43 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
   bool _isLoading = true;
   String? _error;
 
+  // ── FIX: Search state ──────────────────────────────────────────────────────
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  String _activeStatus = 'All';
+
+  // ── FIX: Filtered list getter ──────────────────────────────────────────────
+  List<Map<String, dynamic>> get _filteredReservations {
+    if (_searchQuery.isEmpty && _activeStatus == 'All') return _reservations;
+
+    final q = _searchQuery.toLowerCase();
+    return _reservations.where((r) {
+      final title     = (r['donation']?['title'] ?? '').toString().toLowerCase();
+      final status    = (r['status'] ?? '').toString().toLowerCase();
+      final donorName = (r['donation']?['donor']?['name'] ?? '').toString().toLowerCase();
+
+      final matchesSearch = q.isEmpty ||
+          title.contains(q) ||
+          status.contains(q) ||
+          donorName.contains(q);
+      final matchesStatus = _activeStatus == 'All' ||
+          status == _activeStatus.toLowerCase();
+
+      return matchesSearch && matchesStatus;
+    }).toList();
+  }
+
   @override
   void initState() {
     super.initState();
     _fetch();
+  }
+
+  // ── FIX: Dispose controller ────────────────────────────────────────────────
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetch() async {
@@ -109,8 +142,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                   },
                   child: const Text(
                     'Cancel',
-                    style: TextStyle(
-                        color: kWhite, fontWeight: FontWeight.bold),
+                    style: TextStyle(color: kWhite, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -179,7 +211,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
         : '';
     final String timeAgo = _timeAgo(r['createdAt']?.toString());
 
-    final bool canCancel = status.toLowerCase() == 'pending' ||
+    final bool canCancel  = status.toLowerCase() == 'pending' ||
         status.toLowerCase() == 'confirmed';
     final bool isConfirmed = status.toLowerCase() == 'confirmed';
 
@@ -205,16 +237,14 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                   ? Image.network(
                       photo.startsWith('http') ? photo : '$_base$photo',
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => Container(
+                      errorBuilder: (_, __, ___) => Container(
                         color: kSage,
-                        child: const Icon(Icons.fastfood,
-                            color: kWhite, size: 28),
+                        child: const Icon(Icons.fastfood, color: kWhite, size: 28),
                       ),
                     )
                   : Container(
                       color: kSage,
-                      child: const Icon(Icons.fastfood,
-                          color: kWhite, size: 28),
+                      child: const Icon(Icons.fastfood, color: kWhite, size: 28),
                     ),
             ),
           ),
@@ -224,7 +254,6 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Title
                 Text(
                   '• $title',
                   maxLines: 1,
@@ -237,7 +266,6 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                 ),
                 const SizedBox(height: 3),
 
-                // Distance + time
                 if (distance.isNotEmpty || timeAgo.isNotEmpty)
                   Text(
                     [
@@ -248,11 +276,9 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                   ),
                 const SizedBox(height: 4),
 
-                // Status badge
                 _statusBadge(status),
                 const SizedBox(height: 8),
 
-                // Cancel button
                 if (canCancel)
                   SizedBox(
                     width: double.infinity,
@@ -260,8 +286,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: kTerra,
                         elevation: 0,
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 7),
+                        padding: const EdgeInsets.symmetric(vertical: 7),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
                         ),
@@ -278,7 +303,6 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                     ),
                   ),
 
-                // Chat button — only when confirmed
                 if (isConfirmed) ...[
                   const SizedBox(height: 6),
                   SizedBox(
@@ -287,18 +311,15 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: kTeal,
                         elevation: 0,
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 7),
+                        padding: const EdgeInsets.symmetric(vertical: 7),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
                         ),
                       ),
                       onPressed: () {
-                        final donorName = (r['donation']?['donor']
-                                    ?['name'] ??
+                        final donorName = (r['donation']?['donor']?['name'] ??
                                 r['donor']?['name'] ??
-                                'Donor')
-                            as String;
+                                'Donor') as String;
                         final donTitle =
                             (r['donation']?['title'] ?? '') as String;
                         Navigator.push(
@@ -343,6 +364,48 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
     return '${diff.inDays}d Ago';
   }
 
+  // ── FIX: Status filter chips ───────────────────────────────────────────────
+  Widget _buildFilterChips() {
+    const statuses = ['All', 'pending', 'confirmed', 'cancelled', 'completed'];
+    return SizedBox(
+      height: 36,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        scrollDirection: Axis.horizontal,
+        itemCount: statuses.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final s = statuses[i];
+          final isActive = _activeStatus == s;
+          return GestureDetector(
+            onTap: () => setState(() => _activeStatus = s),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: isActive ? kTeal : kWhite,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isActive ? kTeal : const Color(0xFFDDDDDD),
+                ),
+              ),
+              child: Text(
+                s == 'All' ? 'All' : s[0].toUpperCase() + s.substring(1),
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: isActive ? kWhite : kSage,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -356,42 +419,66 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
         ),
         elevation: 0,
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(56),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: Container(
-              height: 42,
-              decoration: BoxDecoration(
-                color: kWhite,
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: const Row(
-                children: [
-                  SizedBox(width: 14),
-                  Icon(Icons.search, color: kSage, size: 20),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      decoration: InputDecoration(
-                        hintText: 'Search For Food',
-                        hintStyle:
-                            TextStyle(color: kSage, fontSize: 13),
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding:
-                            EdgeInsets.symmetric(vertical: 10),
-                      ),
-                    ),
+          // FIX: increased height to fit search bar + filter chips
+          preferredSize: const Size.fromHeight(100),
+          child: Column(
+            children: [
+              // ── FIX: Search bar — now wired up ────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Container(
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: kWhite,
+                    borderRadius: BorderRadius.circular(30),
                   ),
-                ],
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 14),
+                      const Icon(Icons.search, color: kSage, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          // ── WIRED ──────────────────────────────────────
+                          onChanged: (value) =>
+                              setState(() => _searchQuery = value.trim()),
+                          decoration: const InputDecoration(
+                            hintText: 'Search For Food',
+                            hintStyle: TextStyle(color: kSage, fontSize: 13),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding:
+                                EdgeInsets.symmetric(vertical: 10),
+                          ),
+                        ),
+                      ),
+                      // ── Clear button ────────────────────────────────────
+                      if (_searchQuery.isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.only(right: 12),
+                            child: Icon(Icons.close, color: kSage, size: 18),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
-            ),
+              // ── FIX: Status filter chips ───────────────────────────────
+              const SizedBox(height: 4),
+              _buildFilterChips(),
+              const SizedBox(height: 10),
+            ],
           ),
         ),
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: kTeal))
+          ? const Center(child: CircularProgressIndicator(color: kTeal))
           : _error != null
               ? Center(
                   child: Column(
@@ -399,8 +486,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                     children: [
                       const Icon(Icons.wifi_off, color: kSage, size: 36),
                       const SizedBox(height: 8),
-                      Text(_error!,
-                          style: const TextStyle(color: kSage)),
+                      Text(_error!, style: const TextStyle(color: kSage)),
                       TextButton(
                         onPressed: _fetch,
                         child: const Text('Retry',
@@ -410,39 +496,85 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                   ),
                 )
               : _reservations.isEmpty
+                  // ── FIX: Better empty state ──────────────────────────
                   ? const Center(
-                      child: Text(
-                        'No reservations yet',
-                        style: TextStyle(color: kSage, fontSize: 14),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.bookmark_border, size: 64, color: kSage),
+                          SizedBox(height: 12),
+                          Text(
+                            'No reservations yet',
+                            style: TextStyle(
+                              color: kSage,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Browse donations and reserve one!',
+                            style: TextStyle(color: kSage, fontSize: 13),
+                          ),
+                        ],
                       ),
                     )
-                  : RefreshIndicator(
-                      color: kTeal,
-                      onRefresh: _fetch,
-                      child: Container(
-                        margin: const EdgeInsets.only(top: 16),
-                        decoration: const BoxDecoration(
-                          color: kWhite,
-                          borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(24),
-                            topRight: Radius.circular(24),
+                  // ── FIX: No search results state ─────────────────────
+                  : _filteredReservations.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.search_off,
+                                  size: 56, color: kSage),
+                              const SizedBox(height: 12),
+                              Text(
+                                _searchQuery.isNotEmpty
+                                    ? 'No results for "$_searchQuery"'
+                                    : 'No $_activeStatus reservations',
+                                style: const TextStyle(
+                                  color: kSage,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                'Try a different search or filter',
+                                style:
+                                    TextStyle(color: kSage, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        )
+                      : RefreshIndicator(
+                          color: kTeal,
+                          onRefresh: _fetch,
+                          child: Container(
+                            margin: const EdgeInsets.only(top: 16),
+                            decoration: const BoxDecoration(
+                              color: kWhite,
+                              borderRadius: BorderRadius.only(
+                                topLeft: Radius.circular(24),
+                                topRight: Radius.circular(24),
+                              ),
+                            ),
+                            child: GridView.builder(
+                              padding: const EdgeInsets.all(16),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 12,
+                                childAspectRatio: 0.7,
+                              ),
+                              // ── FIX: use _filteredReservations ────────
+                              itemCount: _filteredReservations.length,
+                              itemBuilder: (_, i) =>
+                                  _buildCard(_filteredReservations[i]),
+                            ),
                           ),
                         ),
-                        child: GridView.builder(
-                          padding: const EdgeInsets.all(16),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            crossAxisSpacing: 12,
-                            mainAxisSpacing: 12,
-                            childAspectRatio: 0.7,
-                          ),
-                          itemCount: _reservations.length,
-                          itemBuilder: (_, i) =>
-                              _buildCard(_reservations[i]),
-                        ),
-                      ),
-                    ),
       bottomNavigationBar: const SharedBottomNav(currentIndex: 1),
     );
   }

@@ -5,89 +5,157 @@ import 'app_token.dart';
 
 class ReservationService {
   static const String baseUrl =
-      "https://gasp-test-production.up.railway.app/api/v1";
+      'https://gasp-test-production.up.railway.app/api/v1';
 
   Map<String, String> _headers() {
     final token = AppToken.get();
     return {
-      "Content-Type": "application/json",
-      if (token != null) "Authorization": "Bearer $token",
+      'Content-Type': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
     };
+  }
+
+  /// POST /api/v1/reservations
+  Future<Map<String, dynamic>> createReservation(
+    String donationId, {
+    double? quantity,
+    double? fullQuantity,
+  }) async {
+    await _ensureBeneficiaryRole();
+
+    final double requestedQty = quantity ?? fullQuantity ?? 1.0;
+
+    final body = <String, dynamic>{
+      'donationId': donationId,
+      'requestedQuantity': requestedQty,
+    };
+
+    debugPrint('[Reservation] POST body: ${jsonEncode(body)}');
+
+    final res = await http.post(
+      Uri.parse('$baseUrl/reservations'),
+      headers: _headers(),
+      body: jsonEncode(body),
+    );
+    debugPrint('[Reservation] → ${res.statusCode} ${res.body}');
+    final resBody = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode >= 200 && res.statusCode < 300) return resBody;
+    throw Exception(resBody['message'] ?? 'Failed to create reservation');
   }
 
   // ── Ensure BENEFICIARY role + fresh token ─────────────────────────────────
   Future<void> _ensureBeneficiaryRole() async {
     final token        = AppToken.get();
-    final refreshToken = AppToken.getRefreshToken(); // ← correct method name
+    final refreshToken = AppToken.getRefreshToken();
+    if (token == null || refreshToken == null) return;
 
-    if (token == null) {
-      debugPrint('[Role] ❌ No access token');
-      return;
+    // Assign role — 200 = newly assigned, 409 = already has it, both are OK.
+    // 500 = server bug, we log it but DO NOT abort — still try the token refresh.
+    try {
+      final roleRes = await http.post(
+        Uri.parse('$baseUrl/users/me/roles'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'role': 'BENEFICIARY'}),
+      );
+      debugPrint('[Role] → ${roleRes.statusCode} ${roleRes.body}');
+      // 409 = already has role → fine. Anything else we just log and continue.
+    } catch (e) {
+      debugPrint('[Role] request failed: $e — continuing anyway');
     }
-    if (refreshToken == null) {
-      debugPrint('[Role] ❌ No refresh token');
-      return;
-    }
 
-    // 1. Assign BENEFICIARY role (409 = already has it, fine)
-    final roleRes = await http.post(
-      Uri.parse("$baseUrl/users/me/roles"),
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer $token",
-      },
-      body: jsonEncode({"role": "BENEFICIARY"}),
-    );
-    debugPrint('[Role] ${roleRes.statusCode} ${roleRes.body}');
-
-    // 2. Refresh token — send refreshToken in BODY (not header)
-    final refreshRes = await http.post(
-      Uri.parse("$baseUrl/auth/refresh"),
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({"refreshToken": refreshToken}), // ← key fix
-    );
-    debugPrint('[Refresh] status: ${refreshRes.statusCode}');
-    debugPrint('[Refresh] body:   ${refreshRes.body}');
-
-    if (refreshRes.statusCode >= 200 && refreshRes.statusCode < 300) {
-      final data = jsonDecode(refreshRes.body) as Map<String, dynamic>;
-      final newAccess =
-          data['data']?['accessToken'] as String? ??
-          data['data']?['token'] as String? ??
-          data['accessToken'] as String? ??
-          data['token'] as String?;
-      final newRefresh =
-          data['data']?['refreshToken'] as String? ??
-          data['refreshToken'] as String?;
-
-      if (newAccess != null && newAccess.isNotEmpty) {
-        AppToken.set(newAccess);
-        debugPrint('[Refresh] ✅ Access token updated');
-      } else {
-        debugPrint('[Refresh] ❌ Could not extract access token. Keys: ${data.keys.toList()}');
+    // Always try to refresh the token regardless of role result
+    try {
+      final refreshRes = await http.post(
+        Uri.parse('$baseUrl/auth/refresh'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'refreshToken': refreshToken}),
+      );
+      debugPrint('[Refresh] → ${refreshRes.statusCode}');
+      if (refreshRes.statusCode >= 200 && refreshRes.statusCode < 300) {
+        final data = jsonDecode(refreshRes.body) as Map<String, dynamic>;
+        final newAccess  = data['data']?['accessToken']  as String? ??
+                           data['accessToken']            as String?;
+        final newRefresh = data['data']?['refreshToken'] as String? ??
+                           data['refreshToken']           as String?;
+        if (newAccess  != null) AppToken.set(newAccess);
+        if (newRefresh != null) AppToken.setRefreshToken(newRefresh);
+        debugPrint('[Refresh] token updated ✓');
       }
-      if (newRefresh != null && newRefresh.isNotEmpty) {
-        AppToken.setRefreshToken(newRefresh);
-        debugPrint('[Refresh] ✅ Refresh token updated');
-      }
+    } catch (e) {
+      debugPrint('[Refresh] request failed: $e — continuing with existing token');
     }
-  }
-
-  /// POST /api/v1/reservations
-  Future<Map<String, dynamic>> createReservation(String donationId) async {
-    await _ensureBeneficiaryRole();
-    final response = await http.post(
-      Uri.parse("$baseUrl/reservations"),
-      headers: _headers(),
-      body: jsonEncode({"donationId": donationId}),
-    );
-    return _handle(response, 'POST reservations');
   }
 
   /// GET /api/v1/reservations
+  Future<List<Map<String, dynamic>>> getReservations() async {
+    final res = await http.get(
+      Uri.parse('$baseUrl/reservations'),
+      headers: _headers(),
+    );
+    debugPrint('[Reservation] getReservations ${res.statusCode}');
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      final raw = body['data']?['reservations'] ??
+          body['data'] ??
+          body['reservations'] ??
+          [];
+      if (raw is List) return List<Map<String, dynamic>>.from(raw);
+    }
+    throw Exception(body['message'] ?? 'Failed to load reservations');
+  }
+
+  /// GET /api/v1/reservations/:id
+  Future<Map<String, dynamic>> getReservationById(String id) async {
+    final res = await http.get(
+      Uri.parse('$baseUrl/reservations/$id'),
+      headers: _headers(),
+    );
+    debugPrint('[Reservation] getReservationById $id → ${res.statusCode}');
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      final data = body['data']?['reservation'] ??
+          body['data']?['data'] ??
+          body['data'] ??
+          body['reservation'];
+      if (data is Map<String, dynamic>) return data;
+      if (body.containsKey('status') || body.containsKey('_id')) return body;
+    }
+    throw Exception(body['message'] ?? 'Failed to load reservation');
+  }
+
+  /// PATCH /api/v1/reservations/:id/accept
+  Future<void> acceptReservation(String id) async {
+    final res = await http.patch(
+      Uri.parse('$baseUrl/reservations/$id/accept'),
+      headers: _headers(),
+    );
+    debugPrint('[Reservation] acceptReservation $id → ${res.statusCode}');
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['message'] ?? 'Failed to accept reservation');
+    }
+  }
+
+  /// PATCH /api/v1/reservations/:id/cancel
+  Future<void> cancelReservation(String id) async {
+    final res = await http.patch(
+      Uri.parse('$baseUrl/reservations/$id/cancel'),
+      headers: _headers(),
+    );
+    debugPrint('[Reservation] cancelReservation $id → ${res.statusCode}');
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['message'] ?? 'Failed to cancel reservation');
+    }
+  }
+
+  /// GET /api/v1/reservations (alias)
   Future<List<Map<String, dynamic>>> getMyReservations() async {
     final response = await http.get(
-      Uri.parse("$baseUrl/reservations"),
+      Uri.parse('$baseUrl/reservations'),
       headers: _headers(),
     );
     return _handleList(response, 'GET reservations');
@@ -96,34 +164,25 @@ class ReservationService {
   /// GET /api/v1/reservations/{id}
   Future<Map<String, dynamic>> getReservation(String id) async {
     final response = await http.get(
-      Uri.parse("$baseUrl/reservations/$id"),
+      Uri.parse('$baseUrl/reservations/$id'),
       headers: _headers(),
     );
     return _handle(response, 'GET reservation/$id');
   }
 
-  /// PATCH /api/v1/reservations/{id}/confirm  (DONATOR only, within 2h window)
+  /// PATCH /api/v1/reservations/{id}/confirm
   Future<Map<String, dynamic>> confirmReservation(String id) async {
     final response = await http.patch(
-      Uri.parse("$baseUrl/reservations/$id/confirm"),
+      Uri.parse('$baseUrl/reservations/$id/confirm'),
       headers: _headers(),
     );
     return _handle(response, 'PATCH confirm/$id');
   }
 
-  /// PATCH /api/v1/reservations/{id}/cancel  (donor or beneficiary)
-  Future<Map<String, dynamic>> cancelReservation(String id) async {
-    final response = await http.patch(
-      Uri.parse("$baseUrl/reservations/$id/cancel"),
-      headers: _headers(),
-    );
-    return _handle(response, 'PATCH cancel/$id');
-  }
-
-  /// PATCH /api/v1/reservations/{id}/complete  (DONATOR only, after pickup)
+  /// PATCH /api/v1/reservations/{id}/complete
   Future<Map<String, dynamic>> completeReservation(String id) async {
     final response = await http.patch(
-      Uri.parse("$baseUrl/reservations/$id/complete"),
+      Uri.parse('$baseUrl/reservations/$id/complete'),
       headers: _headers(),
     );
     return _handle(response, 'PATCH complete/$id');
@@ -134,7 +193,7 @@ class ReservationService {
     debugPrint('[$tag] ${res.statusCode} ${res.body}');
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     if (res.statusCode >= 200 && res.statusCode < 300) return body;
-    throw Exception(body["message"] ?? "Server error ${res.statusCode}");
+    throw Exception(body['message'] ?? 'Server error ${res.statusCode}');
   }
 
   List<Map<String, dynamic>> _handleList(http.Response res, String tag) {
@@ -151,6 +210,6 @@ class ReservationService {
       return [];
     }
     final b = body as Map<String, dynamic>;
-    throw Exception(b["message"] ?? "Server error ${res.statusCode}");
+    throw Exception(b['message'] ?? 'Server error ${res.statusCode}');
   }
 }

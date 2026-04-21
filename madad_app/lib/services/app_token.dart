@@ -1,41 +1,83 @@
-import 'package:flutter/foundation.dart';
+// lib/services/app_token.dart
+// FIX: Token persistence across app restarts using shared_preferences
+// Previously: tokens were in-memory only — lost on app kill
+// Now: tokens are saved to shared_preferences and restored on startup
+
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AppToken {
-  AppToken._();
+  static const _kAccessToken = 'access_token';
+  static const _kRefreshToken = 'refresh_token';
+  static const _kUserId = 'user_id';
 
+  // In-memory cache (still used for fast sync reads)
   static String? _accessToken;
   static String? _refreshToken;
   static String? _userId;
 
-  // ── SET ────────────────────────────────────────────────────────────────────
-  static void set(String accessToken) => _accessToken = accessToken;
-  static void setRefreshToken(String refreshToken) => _refreshToken = refreshToken;
-  static void setUserId(String userId) => _userId = userId;
+  // ─── Init (call once in main.dart before runApp) ───────────────────────────
 
-  static void setTokens({
-    required String accessToken,
-    required String refreshToken,
-  }) {
-    _accessToken = accessToken;
-    _refreshToken = refreshToken;
+  /// Call this in main() before runApp() to restore persisted tokens.
+  /// Example:
+  ///   void main() async {
+  ///     WidgetsFlutterBinding.ensureInitialized();
+  ///     await AppToken.init();
+  ///     runApp(const MyApp());
+  ///   }
+  static Future<void> init() async {
+    final prefs = await SharedPreferences.getInstance();
+    _accessToken = prefs.getString(_kAccessToken);
+    _refreshToken = prefs.getString(_kRefreshToken);
+    _userId = prefs.getString(_kUserId);
   }
 
-  // ── GET ────────────────────────────────────────────────────────────────────
+  // ─── Setters ───────────────────────────────────────────────────────────────
+
+  static Future<void> set(String token) async {
+    _accessToken = token;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kAccessToken, token);
+  }
+
+  static Future<void> setRefreshToken(String rt) async {
+    _refreshToken = rt;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kRefreshToken, rt);
+  }
+
+  static Future<void> setUserId(String id) async {
+    _userId = id;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kUserId, id);
+  }
+
+  // ─── Getters (sync — reads from in-memory cache) ──────────────────────────
+
   static String? get() => _accessToken;
   static String? getRefreshToken() => _refreshToken;
   static String? getUserId() => _userId;
 
-  // ── CLEAR ──────────────────────────────────────────────────────────────────
-  static void clear() {
-    _accessToken  = null;
+  /// Returns true if the user has a saved access token (i.e. was previously logged in).
+  static bool isLoggedIn() => _accessToken != null && _accessToken!.isNotEmpty;
+
+  // ─── Clear (logout) ────────────────────────────────────────────────────────
+
+  static Future<void> clear() async {
+    _accessToken = null;
     _refreshToken = null;
-    _userId       = null;
+    _userId = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kAccessToken);
+    await prefs.remove(_kRefreshToken);
+    await prefs.remove(_kUserId);
   }
 
-  // ── DEBUG ──────────────────────────────────────────────────────────────────
+  // ─── Debug ─────────────────────────────────────────────────────────────────
+
   static void debug() {
-    debugPrint('[AppToken] access  = ${_accessToken  != null ? "SET ✅" : "NULL ❌"}');
-    debugPrint('[AppToken] refresh = ${_refreshToken != null ? "SET ✅" : "NULL ❌"}');
-    debugPrint('[AppToken] userId  = ${_userId       != null ? "$_userId ✅" : "NULL ❌"}');
+    // ignore: avoid_print
+    print('[AppToken] access=${_accessToken?.substring(0, 20)}... '
+        'refresh=${_refreshToken?.substring(0, 10)}... '
+        'userId=$_userId');
   }
 }

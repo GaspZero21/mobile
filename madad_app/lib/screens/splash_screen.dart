@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 import 'onboarding_screen.dart';
+import '../services/app_token.dart';
+import 'home_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -16,10 +18,11 @@ class _SplashScreenState extends State<SplashScreen> {
     super.initState();
     Future.delayed(const Duration(seconds: 3), () {
       if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-      );
+      final next = AppToken.isLoggedIn()
+       ? const HomeScreen()
+       : const OnboardingScreen();
+   Navigator.pushReplacement(context,
+   MaterialPageRoute(builder: (_) => next));
     });
   }
 

@@ -4,15 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:http_parser/http_parser.dart';
-
 import '../theme/colors.dart';
 import '../widgets/shared_bottom_nav.dart';
 import '../screens/my_donations_screen.dart';
 import '../screens/my_reservations_screen.dart';
+import '../screens/notification_settings_screen.dart';
+import '../screens/leaderboard_screen.dart'; // ← ADDED
 import '../services/app_token.dart';
 import '../services/auth_service.dart';
 import '../screens/donor_auth_screen.dart';
-
+import '../screens/gamification_screen.dart';
 // ====================== PROFILE SCREEN ======================
 
 class ProfileScreen extends StatefulWidget {
@@ -22,8 +23,10 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
-  static const String _baseUrl = 'https://gasp-test-production.up.railway.app/api/v1';
+class _ProfileScreenState extends State<ProfileScreen>
+    with SingleTickerProviderStateMixin {
+  static const String _baseUrl =
+      'https://gasp-test-production.up.railway.app/api/v1';
 
   String? _avatarUrl;
   String _displayName = '';
@@ -39,8 +42,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _animCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
-    _fadeAnim  = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
+    _animCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 600));
+    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
     _load();
   }
 
@@ -54,11 +58,16 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     setState(() => _loading = true);
     try {
       final token = AppToken.get();
-      if (token == null) { setState(() => _loading = false); return; }
+      if (token == null) {
+        setState(() => _loading = false);
+        return;
+      }
 
-      final headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'};
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token'
+      };
 
-      // Run all 3 requests in parallel
       final results = await Future.wait([
         http.get(Uri.parse('$_baseUrl/users/me'), headers: headers),
         http.get(Uri.parse('$_baseUrl/donations/my'), headers: headers),
@@ -67,28 +76,26 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
       if (!mounted) return;
 
-      // ── User profile ──
       if (results[0].statusCode == 200) {
         final body = jsonDecode(results[0].body) as Map<String, dynamic>;
         final user = body['data']?['user'] as Map<String, dynamic>?
             ?? body['data'] as Map<String, dynamic>?
             ?? {};
         _displayName = user['name']?.toString() ?? '';
-        _email       = user['email']?.toString() ?? '';
-        _rating      = (user['rating'] as num?)?.toDouble() ?? 0;
-        _avatarUrl   = user['avatar']?.toString();
+        _email = user['email']?.toString() ?? '';
+        _rating = (user['rating'] as num?)?.toDouble() ?? 0;
+        _avatarUrl = user['avatar']?.toString();
       }
 
-      // ── Donation count from GET /donations/my ──
       if (results[1].statusCode == 200) {
         final body = jsonDecode(results[1].body) as Map<String, dynamic>;
-        final raw = body['data']?['donations'] ?? body['data'] ?? body['donations'] ?? [];
+        final raw =
+            body['data']?['donations'] ?? body['data'] ?? body['donations'] ?? [];
         if (raw is List) {
           _donationCount = raw.length;
         } else if (raw is Map) {
           _donationCount = (raw['count'] as num?)?.toInt() ?? 0;
         }
-        // Also try top-level count field
         if (_donationCount == 0) {
           _donationCount = (body['count'] as num?)?.toInt()
               ?? (body['total'] as num?)?.toInt()
@@ -96,10 +103,12 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         }
       }
 
-      // ── Reservation count from GET /reservations ──
       if (results[2].statusCode == 200) {
         final body = jsonDecode(results[2].body) as Map<String, dynamic>;
-        final raw = body['data']?['reservations'] ?? body['data'] ?? body['reservations'] ?? [];
+        final raw = body['data']?['reservations']
+            ?? body['data']
+            ?? body['reservations']
+            ?? [];
         if (raw is List) {
           _reservCount = raw.length;
         } else if (raw is Map) {
@@ -121,8 +130,12 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
   String get _initials {
     if (_displayName.isEmpty) return '?';
-    return _displayName.trim().split(' ').take(2)
-        .map((w) => w.isNotEmpty ? w[0].toUpperCase() : '').join();
+    return _displayName
+        .trim()
+        .split(' ')
+        .take(2)
+        .map((w) => w.isNotEmpty ? w[0].toUpperCase() : '')
+        .join();
   }
 
   PageRoute _slideRoute(Widget page) => PageRouteBuilder(
@@ -164,37 +177,44 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       ),
       child: Stack(
         children: [
-          Positioned(top: -40, right: -40,
+          Positioned(
+              top: -40,
+              right: -40,
               child: _circle(180, Colors.white.withOpacity(0.04))),
-          Positioned(bottom: 20, left: -30,
+          Positioned(
+              bottom: 20,
+              left: -30,
               child: _circle(100, Colors.white.withOpacity(0.04))),
-
           SafeArea(
             bottom: false,
             child: Column(
               children: [
                 const SizedBox(height: 16),
                 const Text('My Profile',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700,
-                        color: kWhite, letterSpacing: 0.4)),
+                    style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: kWhite,
+                        letterSpacing: 0.4)),
                 const SizedBox(height: 28),
-
                 _buildAvatar(92),
                 const SizedBox(height: 14),
-
                 Text(
                   _displayName.isNotEmpty ? _displayName : 'Your Name',
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700,
-                      color: kWhite, letterSpacing: 0.2),
+                  style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: kWhite,
+                      letterSpacing: 0.2),
                 ),
                 if (_email.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(_email,
-                      style: TextStyle(fontSize: 13,
+                      style: TextStyle(
+                          fontSize: 13,
                           color: kWhite.withOpacity(0.65))),
                 ],
                 const SizedBox(height: 14),
-
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -204,8 +224,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                   ],
                 ),
                 const SizedBox(height: 28),
-
-                // Floating stats card
                 Container(
                   margin: const EdgeInsets.symmetric(horizontal: 24),
                   padding: const EdgeInsets.symmetric(vertical: 22),
@@ -213,8 +231,10 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     color: kWhite,
                     borderRadius: BorderRadius.circular(22),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.10),
-                          blurRadius: 24, offset: const Offset(0, 10)),
+                      BoxShadow(
+                          color: Colors.black.withOpacity(0.10),
+                          blurRadius: 24,
+                          offset: const Offset(0, 10)),
                     ],
                   ),
                   child: Row(
@@ -227,7 +247,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       _vertDivider(),
                       _statItem(
                         _rating > 0 ? _rating.toStringAsFixed(1) : '—',
-                        'Rating', Icons.star_rounded,
+                        'Rating',
+                        Icons.star_rounded,
                         const Color(0xFFD4A017),
                       ),
                     ],
@@ -243,16 +264,22 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   }
 
   Widget _buildAvatar(double size) => Container(
-        width: size, height: size,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(color: kWhite, width: 3),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.18),
-              blurRadius: 16, offset: const Offset(0, 6))],
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(0.18),
+                blurRadius: 16,
+                offset: const Offset(0, 6))
+          ],
         ),
         child: ClipOval(
           child: _avatarUrl != null && _avatarUrl!.isNotEmpty
-              ? Image.network(_avatarUrl!, fit: BoxFit.cover,
+              ? Image.network(_avatarUrl!,
+                  fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => _initialsBox(size))
               : _initialsBox(size),
         ),
@@ -262,8 +289,10 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         color: kSage,
         child: Center(
           child: Text(_initials,
-              style: TextStyle(fontSize: size * 0.34,
-                  fontWeight: FontWeight.bold, color: kWhite)),
+              style: TextStyle(
+                  fontSize: size * 0.34,
+                  fontWeight: FontWeight.bold,
+                  color: kWhite)),
         ),
       );
 
@@ -295,9 +324,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               label: 'My Donations',
               subtitle: '$_donationCount items donated',
               iconColor: const Color(0xFF3D8C7A),
-              onTap: () => Navigator.push(
-                      context, _slideRoute(const MyDonationsScreen()))
-                  .then((_) => _load()),
+              onTap: () =>
+                  Navigator.push(context, _slideRoute(const MyDonationsScreen()))
+                      .then((_) => _load()),
             ),
             _menuDivider(),
             _menuItem(
@@ -309,17 +338,54 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       context, _slideRoute(const MyReservationsScreen()))
                   .then((_) => _load()),
             ),
+            _menuItem(
+  icon: Icons.emoji_events_rounded,
+  label: 'Community & Rewards',
+  subtitle: 'Points, badges, leaderboard & Food Saver',
+  iconColor: const Color(0xFFD4A017),
+  onTap: () => Navigator.push(context, _slideRoute(const GamificationScreen())),
+),
+_menuDivider(),
           ]),
+
+          // ── PATCHED: Preferences section now includes Leaderboard ──
           _sectionLabel('Preferences'),
           _menuCard([
+            // ── ADDED: Leaderboard item ────────────────────────────────
+            _menuItem(
+              icon: Icons.leaderboard_rounded,
+              label: 'Leaderboard',
+              subtitle: 'Monthly rankings & your badges',
+              iconColor: const Color(0xFFD4A017),
+              onTap: () => Navigator.push(
+                  context, _slideRoute(const LeaderboardScreen())),
+            ),
+            _menuDivider(),
+            // ─────────────────────────────────────────────────────────
             _menuItem(
               icon: Icons.notifications_none_rounded,
               label: 'Notification Settings',
-              subtitle: 'Manage your alerts',
+              subtitle: 'Manage what you get notified about',
               iconColor: kSage,
-              onTap: () {},
+              onTap: () => Navigator.push(
+                context,
+                PageRouteBuilder(
+                  pageBuilder: (_, animation, __) =>
+                      const NotificationSettingsScreen(),
+                  transitionsBuilder: (_, animation, __, child) =>
+                      SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(1, 0),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(
+                        parent: animation, curve: Curves.easeOutCubic)),
+                    child: child,
+                  ),
+                ),
+              ),
             ),
           ]),
+
           _sectionLabel('Session'),
           _menuCard([
             _menuItem(
@@ -342,8 +408,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         child: Align(
           alignment: Alignment.centerLeft,
           child: Text(label.toUpperCase(),
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                  color: kSage.withOpacity(0.8), letterSpacing: 1.3)),
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: kSage.withOpacity(0.8),
+                  letterSpacing: 1.3)),
         ),
       );
 
@@ -353,8 +422,12 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           decoration: BoxDecoration(
             color: kWhite,
             borderRadius: BorderRadius.circular(18),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05),
-                blurRadius: 10, offset: const Offset(0, 4))],
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4))
+            ],
           ),
           child: Column(children: children),
         ),
@@ -381,7 +454,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           child: Row(
             children: [
               Container(
-                width: 42, height: 42,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
                   color: iconColor.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(12),
@@ -395,14 +469,15 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                   children: [
                     Text(label,
                         style: TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
                             color: danger
                                 ? const Color(0xFFBF4444)
                                 : const Color(0xFF1A2E2E))),
                     const SizedBox(height: 2),
                     Text(subtitle,
-                        style: TextStyle(fontSize: 12,
-                            color: kSage.withOpacity(0.9))),
+                        style: TextStyle(
+                            fontSize: 12, color: kSage.withOpacity(0.9))),
                   ],
                 ),
               ),
@@ -413,18 +488,23 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         ),
       );
 
-  Widget _statItem(String value, String label, IconData icon, Color color) =>
+  Widget _statItem(
+          String value, String label, IconData icon, Color color) =>
       Expanded(
         child: Column(
           children: [
             Icon(icon, color: color, size: 22),
             const SizedBox(height: 6),
             Text(value,
-                style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800,
+                style: const TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
                     color: Color(0xFF1A2E2E))),
             const SizedBox(height: 2),
             Text(label,
-                style: TextStyle(fontSize: 11, color: kSage,
+                style: TextStyle(
+                    fontSize: 11,
+                    color: kSage,
                     fontWeight: FontWeight.w500)),
           ],
         ),
@@ -441,20 +521,24 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           border: Border.all(color: color.withOpacity(0.45), width: 1),
         ),
         child: Text(label,
-            style: const TextStyle(fontSize: 12, color: kWhite,
+            style: const TextStyle(
+                fontSize: 12,
+                color: kWhite,
                 fontWeight: FontWeight.w600)),
       );
 
   Widget _circle(double size, Color color) => Container(
-        width: size, height: size,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle));
+      width: size,
+      height: size,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle));
 
   void _showLogoutDialog() {
     showDialog(
       context: context,
       barrierColor: Colors.black45,
       builder: (_) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         backgroundColor: kWhite,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
@@ -462,7 +546,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 68, height: 68,
+                width: 68,
+                height: 68,
                 decoration: BoxDecoration(
                   color: const Color(0xFFBF4444).withOpacity(0.10),
                   shape: BoxShape.circle,
@@ -472,12 +557,15 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               ),
               const SizedBox(height: 20),
               const Text('Log Out?',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800,
+                  style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
                       color: Color(0xFF1A2E2E))),
               const SizedBox(height: 10),
               Text('Are you sure you want to sign out\nof your account?',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: kSage, height: 1.5)),
+                  style:
+                      TextStyle(fontSize: 14, color: kSage, height: 1.5)),
               const SizedBox(height: 28),
               Row(
                 children: [
@@ -491,7 +579,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       ),
                       onPressed: () => Navigator.pop(context),
                       child: Text('Cancel',
-                          style: TextStyle(color: kSage,
+                          style: TextStyle(
+                              color: kSage,
                               fontWeight: FontWeight.w600)),
                     ),
                   ),
@@ -516,7 +605,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                         );
                       },
                       child: const Text('Log Out',
-                          style: TextStyle(color: kWhite,
+                          style: TextStyle(
+                              color: kWhite,
                               fontWeight: FontWeight.w700)),
                     ),
                   ),
@@ -535,14 +625,16 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 class EditProfileScreen extends StatefulWidget {
   final String displayName;
   final String? avatarUrl;
-  const EditProfileScreen({super.key, this.displayName = '', this.avatarUrl});
+  const EditProfileScreen(
+      {super.key, this.displayName = '', this.avatarUrl});
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
-  static const String _baseUrl = 'https://gasp-test-production.up.railway.app/api/v1';
+  static const String _baseUrl =
+      'https://gasp-test-production.up.railway.app/api/v1';
 
   Uint8List? _avatarBytes;
   String? _avatarMime;
@@ -556,17 +648,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late final TextEditingController _bioCtrl;
   late final TextEditingController _cityCtrl;
 
-  String _origName = '', _origPhone = '', _origEmail = '', _origBio = '', _origCity = '';
+  String _origName = '',
+      _origPhone = '',
+      _origEmail = '',
+      _origBio = '',
+      _origCity = '';
 
   @override
   void initState() {
     super.initState();
     _avatarUrl = widget.avatarUrl;
-    _nameCtrl  = TextEditingController();
+    _nameCtrl = TextEditingController();
     _phoneCtrl = TextEditingController();
     _emailCtrl = TextEditingController();
-    _bioCtrl   = TextEditingController();
-    _cityCtrl  = TextEditingController();
+    _bioCtrl = TextEditingController();
+    _cityCtrl = TextEditingController();
     for (final c in [_nameCtrl, _phoneCtrl, _emailCtrl, _bioCtrl, _cityCtrl]) {
       c.addListener(_onChanged);
     }
@@ -575,15 +671,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   void dispose() {
-    _nameCtrl.dispose(); _phoneCtrl.dispose(); _emailCtrl.dispose();
-    _bioCtrl.dispose(); _cityCtrl.dispose();
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    _emailCtrl.dispose();
+    _bioCtrl.dispose();
+    _cityCtrl.dispose();
     super.dispose();
   }
 
   void _onChanged() {
-    final changed = _nameCtrl.text != _origName || _phoneCtrl.text != _origPhone ||
-        _emailCtrl.text != _origEmail || _bioCtrl.text != _origBio ||
-        _cityCtrl.text != _origCity || _avatarBytes != null;
+    final changed = _nameCtrl.text != _origName ||
+        _phoneCtrl.text != _origPhone ||
+        _emailCtrl.text != _origEmail ||
+        _bioCtrl.text != _origBio ||
+        _cityCtrl.text != _origCity ||
+        _avatarBytes != null;
     if (changed != _hasChanges) setState(() => _hasChanges = changed);
   }
 
@@ -592,27 +694,29 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final token = AppToken.get();
       if (token == null) return;
       final res = await http.get(Uri.parse('$_baseUrl/users/me'),
-          headers: {'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token'});
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token'
+          });
 
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body) as Map<String, dynamic>;
         final user = body['data']?['user'] as Map<String, dynamic>?
             ?? body['data'] as Map<String, dynamic>?
             ?? {};
-        _origName  = user['name']?.toString() ?? widget.displayName;
+        _origName = user['name']?.toString() ?? widget.displayName;
         _origPhone = user['phoneNumber']?.toString() ?? '';
         _origEmail = user['email']?.toString() ?? '';
-        _origBio   = user['bio']?.toString() ?? '';
-        _origCity  = user['city']?.toString() ?? '';
+        _origBio = user['bio']?.toString() ?? '';
+        _origCity = user['city']?.toString() ?? '';
 
         if (mounted) {
           setState(() {
-            _nameCtrl.text  = _origName;
+            _nameCtrl.text = _origName;
             _phoneCtrl.text = _origPhone;
             _emailCtrl.text = _origEmail;
-            _bioCtrl.text   = _origBio;
-            _cityCtrl.text  = _origCity;
+            _bioCtrl.text = _origBio;
+            _cityCtrl.text = _origCity;
             _avatarUrl = user['avatar']?.toString() ?? _avatarUrl;
           });
         }
@@ -622,12 +726,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _pickAvatar() async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    final picked = await picker.pickImage(
+        source: ImageSource.gallery, imageQuality: 80);
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
-    final ext   = picked.name.split('.').last.toLowerCase();
-    final mime  = ext == 'png' ? 'image/png' : ext == 'webp' ? 'image/webp' : 'image/jpeg';
-    setState(() { _avatarBytes = bytes; _avatarMime = mime; _hasChanges = true; });
+    final ext = picked.name.split('.').last.toLowerCase();
+    final mime = ext == 'png'
+        ? 'image/png'
+        : ext == 'webp'
+            ? 'image/webp'
+            : 'image/jpeg';
+    setState(() {
+      _avatarBytes = bytes;
+      _avatarMime = mime;
+      _hasChanges = true;
+    });
   }
 
   Future<void> _save() async {
@@ -638,14 +751,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       if (_avatarBytes != null) {
         final mime = _avatarMime ?? 'image/jpeg';
-        final ext  = mime.split('/').last;
-        final req  = http.MultipartRequest(
+        final ext = mime.split('/').last;
+        final req = http.MultipartRequest(
             'PATCH', Uri.parse('$_baseUrl/users/me/avatar'))
           ..headers['Authorization'] = 'Bearer $token'
           ..files.add(http.MultipartFile.fromBytes('avatar', _avatarBytes!,
               filename: 'avatar.$ext',
               contentType: MediaType('image', ext)));
-        final streamed  = await req.send();
+        final streamed = await req.send();
         final avatarRes = await http.Response.fromStream(streamed);
         if (avatarRes.statusCode != 200) {
           final b = jsonDecode(avatarRes.body) as Map<String, dynamic>?;
@@ -655,8 +768,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       final res = await http.patch(
         Uri.parse('$_baseUrl/users/me'),
-        headers: {'Content-Type': 'application/json',
-            'Authorization': 'Bearer $token'},
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token'
+        },
         body: jsonEncode({
           'name': _nameCtrl.text.trim(),
           'phoneNumber': _phoneCtrl.text.trim(),
@@ -667,7 +782,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       if (!mounted) return;
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        setState(() { _hasChanges = false; _avatarBytes = null; });
+        setState(() {
+          _hasChanges = false;
+          _avatarBytes = null;
+        });
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Profile updated ✓'),
             backgroundColor: kTeal,
@@ -678,20 +796,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         throw Exception(b['message'] ?? 'Update failed');
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: const Color(0xFFBF4444),
-          behavior: SnackBarBehavior.floating));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: const Color(0xFFBF4444),
+            behavior: SnackBarBehavior.floating));
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
   }
 
   String get _initials {
-    final name = _nameCtrl.text.isNotEmpty ? _nameCtrl.text : widget.displayName;
+    final name =
+        _nameCtrl.text.isNotEmpty ? _nameCtrl.text : widget.displayName;
     if (name.isEmpty) return '?';
-    return name.trim().split(' ').take(2)
-        .map((w) => w.isNotEmpty ? w[0].toUpperCase() : '').join();
+    return name
+        .trim()
+        .split(' ')
+        .take(2)
+        .map((w) => w.isNotEmpty ? w[0].toUpperCase() : '')
+        .join();
   }
 
   @override
@@ -709,7 +833,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Widget _buildHeader(BuildContext context) {
-    final avatarSize = (MediaQuery.of(context).size.width * 0.22).clamp(80.0, 110.0);
+    final avatarSize =
+        (MediaQuery.of(context).size.width * 0.22).clamp(80.0, 110.0);
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -720,8 +845,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ),
       child: Stack(
         children: [
-          Positioned(top: -20, right: -20,
-              child: Container(width: 130, height: 130,
+          Positioned(
+              top: -20,
+              right: -20,
+              child: Container(
+                  width: 130,
+                  height: 130,
                   decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.04),
                       shape: BoxShape.circle))),
@@ -730,7 +859,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                   child: Row(
                     children: [
                       IconButton(
@@ -741,42 +871,50 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       const Expanded(
                         child: Text('Edit Profile',
                             textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 18,
-                                fontWeight: FontWeight.w700, color: kWhite)),
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                color: kWhite)),
                       ),
                       const SizedBox(width: 48),
                     ],
                   ),
                 ),
                 const SizedBox(height: 12),
-
                 GestureDetector(
                   onTap: _pickAvatar,
                   child: Stack(
                     children: [
                       Container(
-                        width: avatarSize, height: avatarSize,
+                        width: avatarSize,
+                        height: avatarSize,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(color: kWhite, width: 3),
-                          boxShadow: [BoxShadow(
-                              color: Colors.black.withOpacity(0.18),
-                              blurRadius: 14, offset: const Offset(0, 5))],
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.black.withOpacity(0.18),
+                                blurRadius: 14,
+                                offset: const Offset(0, 5))
+                          ],
                         ),
                         child: ClipOval(
                           child: _avatarBytes != null
                               ? Image.memory(_avatarBytes!, fit: BoxFit.cover)
                               : (_avatarUrl != null && _avatarUrl!.isNotEmpty)
-                                  ? Image.network(_avatarUrl!, fit: BoxFit.cover,
+                                  ? Image.network(_avatarUrl!,
+                                      fit: BoxFit.cover,
                                       errorBuilder: (_, __, ___) =>
                                           _initialsBox(avatarSize))
                                   : _initialsBox(avatarSize),
                         ),
                       ),
                       Positioned(
-                        bottom: 2, right: 2,
+                        bottom: 2,
+                        right: 2,
                         child: Container(
-                          width: 30, height: 30,
+                          width: 30,
+                          height: 30,
                           decoration: BoxDecoration(
                             color: kTerra,
                             shape: BoxShape.circle,
@@ -791,14 +929,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  _nameCtrl.text.isNotEmpty ? _nameCtrl.text : widget.displayName,
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700,
+                  _nameCtrl.text.isNotEmpty
+                      ? _nameCtrl.text
+                      : widget.displayName,
+                  style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
                       color: kWhite),
                 ),
                 const SizedBox(height: 4),
                 Text('Tap photo to change',
-                    style: TextStyle(fontSize: 12,
-                        color: kWhite.withOpacity(0.6))),
+                    style: TextStyle(
+                        fontSize: 12, color: kWhite.withOpacity(0.6))),
                 const SizedBox(height: 28),
               ],
             ),
@@ -812,8 +954,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         color: kSage,
         child: Center(
           child: Text(_initials,
-              style: TextStyle(fontSize: size * 0.34,
-                  fontWeight: FontWeight.bold, color: kWhite)),
+              style: TextStyle(
+                  fontSize: size * 0.34,
+                  fontWeight: FontWeight.bold,
+                  color: kWhite)),
         ),
       );
 
@@ -842,16 +986,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             _field('City', _cityCtrl, Icons.location_on_outlined),
           ]),
           const SizedBox(height: 32),
-
           AnimatedSlide(
-            offset: _hasChanges ? Offset.zero : const Offset(0, 0.15),
+            offset:
+                _hasChanges ? Offset.zero : const Offset(0, 0.15),
             duration: const Duration(milliseconds: 280),
             curve: Curves.easeOut,
             child: AnimatedOpacity(
               opacity: _hasChanges ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 220),
               child: SizedBox(
-                width: double.infinity, height: 52,
+                width: double.infinity,
+                height: 52,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: kTerra,
@@ -861,12 +1006,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                   onPressed: _isSaving ? null : _save,
                   child: _isSaving
-                      ? const SizedBox(width: 22, height: 22,
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
                           child: CircularProgressIndicator(
                               color: kWhite, strokeWidth: 2.5))
                       : const Text('Save Changes',
-                          style: TextStyle(fontSize: 15,
-                              fontWeight: FontWeight.w700, color: kWhite,
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: kWhite,
                               letterSpacing: 0.3)),
                 ),
               ),
@@ -881,8 +1030,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         decoration: BoxDecoration(
           color: kWhite,
           borderRadius: BorderRadius.circular(18),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05),
-              blurRadius: 10, offset: const Offset(0, 4))],
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4))
+          ],
         ),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
         child: Column(children: children),
@@ -893,10 +1046,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         child: Divider(height: 1, color: Color(0xFFF0EDE6)),
       );
 
-  Widget _field(String label, TextEditingController ctrl, IconData icon,
-      {TextInputType type = TextInputType.text,
-      bool readOnly = false,
-      int maxLines = 1}) {
+  Widget _field(
+    String label,
+    TextEditingController ctrl,
+    IconData icon, {
+    TextInputType type = TextInputType.text,
+    bool readOnly = false,
+    int maxLines = 1,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 13),
       child: Row(
@@ -913,8 +1070,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label,
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
-                        color: kSage, letterSpacing: 0.5)),
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: kSage,
+                        letterSpacing: 0.5)),
                 const SizedBox(height: 3),
                 TextField(
                   controller: ctrl,
