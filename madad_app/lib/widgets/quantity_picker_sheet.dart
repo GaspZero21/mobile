@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/colors.dart';
 
 /// Shows a bottom sheet that lets the user pick how much to reserve.
 ///
 /// [totalQuantity]  – raw string from the donation, e.g. "5 kg"
-/// [remainingQty]   – how much is still available (shown as info, not as max)
+/// [remainingQty]   – how much is still available
 ///
 /// Returns the chosen [double] or null if the user cancelled.
 Future<double?> showQuantityPickerSheet(
@@ -33,233 +34,335 @@ class _QuantityPickerSheet extends StatefulWidget {
   });
 
   @override
-  State<_QuantityPickerSheet> createState() => _QuantityPickerSheetState();
+  State<_QuantityPickerSheet> createState() =>
+      _QuantityPickerSheetState();
 }
 
-class _QuantityPickerSheetState extends State<_QuantityPickerSheet> {
+class _QuantityPickerSheetState
+    extends State<_QuantityPickerSheet> {
   late double _value;
-  late double _max; // ← always based on TOTAL, not remaining
+  late double _max;
+  late final TextEditingController _ctrl;
+  final _formKey = GlobalKey<FormState>();
 
   // Extract unit label from "5 kg" → "kg"
   String get _unit {
-    final parts = widget.totalQuantity.trim().split(RegExp(r'\s+'));
+    final parts =
+        widget.totalQuantity.trim().split(RegExp(r'\s+'));
     return parts.length >= 2 ? parts.sublist(1).join(' ') : '';
   }
 
   double _parseNum(String raw) {
     final m = RegExp(r'[\d.]+').firstMatch(raw);
-    return m != null ? double.tryParse(m.group(0)!) ?? 1.0 : 1.0;
+    return m != null
+        ? double.tryParse(m.group(0)!) ?? 1.0
+        : 1.0;
   }
+
+  String _fmt(double v) => v == v.roundToDouble()
+      ? v.toInt().toString()
+      : v.toStringAsFixed(1);
 
   @override
   void initState() {
     super.initState();
-    // ── FIXED: max = total quantity, not remaining ─────────────────────
-    _max = _parseNum(widget.totalQuantity);
+    _max = widget.remainingQty ??
+        _parseNum(widget.totalQuantity);
     if (_max <= 0) _max = 1.0;
-    // Start at 1 step (never 0)
-    _value = _max >= 1.0 ? 1.0 : _max;
+    _value = 1.0.clamp(0.01, _max);
+    _ctrl = TextEditingController(text: _fmt(_value));
   }
 
-  bool get _useDecimals => _max <= 10;
-  double get _step => _useDecimals ? 0.5 : 1.0;
-  int get _divisions => ((_max / _step).round()).clamp(1, 200);
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
-  String _fmt(double v) =>
-      v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
+  void _setQty(double v) {
+    final clamped = v.clamp(0.01, _max);
+    setState(() {
+      _value = clamped;
+      _ctrl.text = _fmt(clamped);
+      _ctrl.selection =
+          TextSelection.collapsed(offset: _ctrl.text.length);
+    });
+  }
+
+  void _increment() => _setQty(_value + 1);
+  void _decrement() => _setQty(_value - 1);
 
   @override
   Widget build(BuildContext context) {
-    final remaining = widget.remainingQty;
-    final pct = _max > 0 ? (_value / _max) : 1.0;
-    final Color sliderColor = pct > 0.7
-        ? Colors.green
-        : pct > 0.3
-            ? kTeal
-            : Colors.orange;
+    final pct = (_value / _max).clamp(0.0, 1.0);
+    Color barColor = kTeal;
+    if (pct > 0.9) barColor = Colors.red;
+    else if (pct > 0.6) barColor = Colors.orange;
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+    return Padding(
       padding: EdgeInsets.only(
-        left: 24, right: 24, top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 32,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 40, height: 4,
-            decoration: BoxDecoration(
-              color: const Color(0xFFDDDDDD),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          const Text(
-            'How much do you want to reserve?',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold,
-                color: Colors.black87),
-          ),
-          const SizedBox(height: 6),
-
-          // Total + remaining info
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding:
+            const EdgeInsets.fromLTRB(24, 14, 24, 28),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                'Total: ${_fmt(_max)}${_unit.isNotEmpty ? ' $_unit' : ''}',
-                style: const TextStyle(fontSize: 12, color: kSage),
+              // ── Drag handle
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 18),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDDDDDD),
+                  borderRadius: BorderRadius.circular(4),
+                ),
               ),
-              if (remaining != null) ...[
-                const Text('  •  ', style: TextStyle(color: kSage)),
-                Text(
-                  'Still available: ${_fmt(remaining)}${_unit.isNotEmpty ? ' $_unit' : ''}',
-                  style: const TextStyle(fontSize: 12, color: Colors.green,
-                      fontWeight: FontWeight.w600),
+
+              // ── Title
+              const Text(
+                'How much do you want to reserve?',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
                 ),
-              ],
-            ],
-          ),
+              ),
+              const SizedBox(height: 4),
 
-          const SizedBox(height: 24),
-
-          // Big quantity display
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 18),
-            decoration: BoxDecoration(
-              color: kTeal.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: [
-                Text(
-                  _fmt(_value),
-                  style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold,
-                      color: sliderColor),
-                ),
-                if (_unit.isNotEmpty)
-                  Text(_unit,
-                      style: const TextStyle(fontSize: 18, color: kSage,
-                          fontWeight: FontWeight.w500)),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          // Slider — min is one step, max is TOTAL quantity
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              activeTrackColor: sliderColor,
-              thumbColor: sliderColor,
-              inactiveTrackColor: const Color(0xFFDDDDDD),
-              overlayColor: sliderColor.withOpacity(0.15),
-              trackHeight: 6,
-            ),
-            child: Slider(
-              value: _value,
-              min: _step,
-              max: _max,
-              divisions: _divisions,
-              onChanged: (v) => setState(() => _value = v),
-            ),
-          ),
-
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('${_fmt(_step)}${_unit.isNotEmpty ? ' $_unit' : ''}',
-                  style: const TextStyle(fontSize: 11, color: kSage)),
-              Text('${_fmt(_max)}${_unit.isNotEmpty ? ' $_unit' : ''} (all)',
-                  style: const TextStyle(fontSize: 11, color: kSage)),
-            ],
-          ),
-
-          const SizedBox(height: 20),
-
-          // Quick-select buttons
-          if (_max >= 2) ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final frac in [0.25, 0.5, 0.75, 1.0])
-                  _quickBtn(frac),
-              ],
-            ),
-            const SizedBox(height: 20),
-          ],
-
-          // Action buttons
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: kTerra),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20)),
+              // ── Info row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Total: ${_fmt(_parseNum(widget.totalQuantity))}${_unit.isNotEmpty ? ' $_unit' : ''}',
+                    style: const TextStyle(
+                        fontSize: 12, color: kSage),
                   ),
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel',
-                      style: TextStyle(color: kTerra,
-                          fontWeight: FontWeight.w600)),
+                  if (widget.remainingQty != null) ...[
+                    const Text('  •  ',
+                        style: TextStyle(color: kSage)),
+                    Text(
+                      'Available: ${_fmt(widget.remainingQty!)}${_unit.isNotEmpty ? ' $_unit' : ''}',
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.green,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // ── Progress bar
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: pct,
+                  minHeight: 8,
+                  backgroundColor: const Color(0xFFE8E3DA),
+                  valueColor:
+                      AlwaysStoppedAnimation<Color>(barColor),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
+              const SizedBox(height: 20),
+
+              // ── Stepper row  (−  |  text field  |  +)
+              Row(
+                children: [
+                  _stepBtn(
+                    icon: Icons.remove,
+                    onTap: _value > 1 ? _decrement : null,
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12),
+                      child: TextFormField(
+                        controller: _ctrl,
+                        keyboardType:
+                            const TextInputType.numberWithOptions(
+                                decimal: true),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                              RegExp(r'[\d.]')),
+                        ],
+                        decoration: InputDecoration(
+                          suffixText: _unit.isNotEmpty
+                              ? _unit
+                              : null,
+                          suffixStyle: const TextStyle(
+                              fontSize: 14, color: kSage),
+                          contentPadding:
+                              const EdgeInsets.symmetric(
+                                  vertical: 10),
+                          border: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(14),
+                            borderSide: const BorderSide(
+                                color: kSage),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius:
+                                BorderRadius.circular(14),
+                            borderSide: const BorderSide(
+                                color: kTeal, width: 2),
+                          ),
+                          filled: true,
+                          fillColor:
+                              const Color(0xFFF7F7F5),
+                        ),
+                        validator: (v) {
+                          final parsed = double.tryParse(
+                              v?.trim() ?? '');
+                          if (parsed == null || parsed <= 0) {
+                            return 'Enter a valid number';
+                          }
+                          if (parsed > _max) {
+                            return 'Max is ${_fmt(_max)}';
+                          }
+                          return null;
+                        },
+                        onChanged: (v) {
+                          final parsed =
+                              double.tryParse(v.trim());
+                          if (parsed != null &&
+                              parsed > 0 &&
+                              parsed <= _max) {
+                            setState(() => _value = parsed);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  _stepBtn(
+                    icon: Icons.add,
+                    onTap:
+                        _value < _max ? _increment : null,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // ── Quick-pick chips
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final frac in [0.25, 0.5, 0.75, 1.0])
+                      Padding(
+                        padding:
+                            const EdgeInsets.only(right: 8),
+                        child: _quickChip(frac),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // ── Confirm button
+              SizedBox(
+                width: double.infinity,
+                height: 50,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: kTerra, elevation: 0,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    backgroundColor: kTerra,
+                    elevation: 0,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20)),
+                        borderRadius:
+                            BorderRadius.circular(20)),
                   ),
                   onPressed: () {
-                    final qty = _value > 0 ? _value : _step;
-                    Navigator.pop(context, qty);
+                    if (!_formKey.currentState!.validate()) {
+                      return;
+                    }
+                    final val =
+                        double.tryParse(_ctrl.text.trim()) ??
+                            _value;
+                    Navigator.pop(
+                        context, val.clamp(0.01, _max));
                   },
                   child: Text(
-                    'Reserve ${_fmt(_value)}${_unit.isNotEmpty ? ' $_unit' : ''}',
-                    style: const TextStyle(color: Colors.white,
-                        fontWeight: FontWeight.bold),
+                    'Reserve ${_fmt(_value)}${_unit.isNotEmpty ? ' $_unit' : ' unit${_value == 1 ? '' : 's'}'}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _quickBtn(double fraction) {
-    final raw     = _max * fraction;
-    final snapped = ((raw / _step).round() * _step).clamp(_step, _max);
-    final label   = fraction == 1.0 ? 'All' : '${(fraction * 100).toInt()}%';
-    final isActive = (_value - snapped).abs() < 0.001;
-
+  Widget _stepBtn(
+      {required IconData icon, VoidCallback? onTap}) {
+    final enabled = onTap != null;
     return GestureDetector(
-      onTap: () => setState(() => _value = snapped),
+      onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        width: 48,
+        height: 48,
         decoration: BoxDecoration(
-          color: isActive ? kTeal : kTeal.withOpacity(0.08),
+          color: enabled ? kTeal : const Color(0xFFE8E3DA),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon,
+            color: enabled ? Colors.white : kSage,
+            size: 22),
+      ),
+    );
+  }
+
+  Widget _quickChip(double fraction) {
+    final val = (_max * fraction).clamp(0.01, _max);
+    final label = fraction == 1.0
+        ? 'All'
+        : '${(fraction * 100).toInt()}%';
+    final isActive = (_value - val).abs() < 0.01;
+
+    return GestureDetector(
+      onTap: () => _setQty(val),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(
+            horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: isActive
+              ? kTeal
+              : kTeal.withOpacity(0.08),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-              color: isActive ? kTeal : kTeal.withOpacity(0.3)),
+              color: isActive
+                  ? kTeal
+                  : kTeal.withOpacity(0.3)),
         ),
-        child: Text(label,
-            style: TextStyle(fontSize: 12,
-                color: isActive ? Colors.white : kTeal,
-                fontWeight: FontWeight.w600)),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: isActive ? Colors.white : kTeal,
+          ),
+        ),
       ),
     );
   }

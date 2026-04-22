@@ -217,6 +217,11 @@ class _MyDonationsScreenState extends State<MyDonationsScreen> {
                 const SizedBox(height: 2),
                 Text(d['category'] ?? '',
                     style: const TextStyle(fontSize: 11, color: kSage)),
+                if (d['totalQuantity'] != null)
+                  Text(
+                    '${d['totalQuantity']} ${d['quantityUnit'] ?? ''}',
+                    style: const TextStyle(fontSize: 11, color: kSage),
+                  ),
                 const SizedBox(height: 10),
                 Row(children: [
                   _btn('Reservations', kTeal, () => _showReservations(d)),
@@ -277,7 +282,6 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
   bool    _loading = true;
   String? _actionError;
 
-  // ✅ FIXED: correct base URL (was broken: '.../reservations/{id}')
   static const String baseUrl =
       'https://gasp-test-production.up.railway.app/api/v1';
 
@@ -300,9 +304,6 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
     try {
       final donationId = widget.donation['id'] as String?;
 
-      // ✅ FIXED: GET /api/v1/reservations — returns all reservations for the
-      // logged-in user (as donor or beneficiary), then filter by donationId
-      // client-side. There is no /donations/{id}/reservations endpoint.
       final res = await http.get(
         Uri.parse('$baseUrl/reservations'),
         headers: _headers,
@@ -326,7 +327,6 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
         list = body['reservations'];
       }
 
-      // ✅ Filter client-side to only show reservations for this donation
       final all = List<Map<String, dynamic>>.from(list);
       final filtered = donationId == null
           ? all
@@ -347,8 +347,6 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
     }
   }
 
-  // ── Confirm reservation (DONATOR, within 2h window) ──────────────────────
-  // ✅ PATCH /api/v1/reservations/{id}/confirm
   Future<void> _confirm(String id) async {
     _showLoadingOverlay();
     try {
@@ -364,8 +362,6 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
     }
   }
 
-  // ── Cancel reservation (donor or beneficiary) ─────────────────────────────
-  // ✅ PATCH /api/v1/reservations/{id}/cancel
   Future<void> _cancel(String id) async {
     final ok = await _confirmDialog(
       title: 'Cancel this reservation?',
@@ -387,8 +383,6 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
     }
   }
 
-  // ── Complete reservation (DONATOR, after pickup) ──────────────────────────
-  // ✅ PATCH /api/v1/reservations/{id}/complete
   Future<void> _complete(String id) async {
     final ok = await _confirmDialog(
       title: 'Mark as completed?',
@@ -404,6 +398,72 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
       Navigator.pop(context);
       _snack('Donation completed 🎉', Colors.green);
       _fetch();
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      _snack('Error: $e', Colors.red);
+    }
+  }
+
+  Future<void> _updateQuantity(String id, double currentQty) async {
+    final ctrl = TextEditingController(text: currentQty.toString());
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Update Quantity',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: kTeal)),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            hintText: 'Enter new quantity',
+            hintStyle: TextStyle(color: kSage),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: kSage)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: kTeal, elevation: 0),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Update',
+                style: TextStyle(color: kWhite, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final newQty = double.tryParse(ctrl.text.trim());
+    if (newQty == null || newQty <= 0) {
+      _snack('Enter a valid quantity', Colors.orange);
+      return;
+    }
+    _showLoadingOverlay();
+    try {
+      final token = AppToken.get();
+      final headers = {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      };
+      final res = await http.patch(
+        Uri.parse('$baseUrl/reservations/$id'),
+        headers: headers,
+        body: jsonEncode({'requestedQuantity': newQty}),
+      );
+      if (!mounted) return;
+      Navigator.pop(context);
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        _snack('Quantity updated ✓', Colors.green);
+        _fetch();
+      } else {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        _snack(body['message'] ?? 'Update failed', Colors.red);
+      }
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context);
@@ -466,7 +526,6 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
     );
   }
 
-  // ── Status helpers ────────────────────────────────────────────────────────
   Color _statusColor(String status) {
     switch (status.toLowerCase()) {
       case 'confirmed': return Colors.green;
@@ -551,6 +610,12 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
     final isPending   = status == 'pending';
     final isConfirmed = status == 'confirmed';
 
+    // ── FIXED: safely parse requestedQuantity — API may return String or num ─
+    final rawQty = r['requestedQuantity'] ?? r['quantity'] ?? 0;
+    final double requestedQty = rawQty is num
+        ? rawQty.toDouble()
+        : double.tryParse(rawQty.toString()) ?? 0.0;
+
     final createdAt = r['createdAt'] as String?;
     String timeStr = '';
     if (createdAt != null) {
@@ -588,6 +653,11 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
                 if (timeStr.isNotEmpty)
                   Text(timeStr, style: const TextStyle(
                       fontSize: 11, color: kSage)),
+                // Show requested quantity
+                Text(
+                  'Qty: ${requestedQty == requestedQty.roundToDouble() ? requestedQty.toInt() : requestedQty.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 11, color: kSage),
+                ),
               ],
             )),
 
@@ -621,7 +691,14 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
                   icon: Icons.check,
                   onTap: () => _confirm(id),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
+                _actionBtn(
+                  label: 'Qty',
+                  color: kTeal,
+                  icon: Icons.edit_outlined,
+                  onTap: () => _updateQuantity(id, requestedQty),
+                ),
+                const SizedBox(width: 6),
                 _actionBtn(
                   label: 'Cancel',
                   color: kTerra,
@@ -661,7 +738,7 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
       GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           decoration: BoxDecoration(
               color: color, borderRadius: BorderRadius.circular(20)),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -689,6 +766,7 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
 
   late final TextEditingController _titleController;
   late final TextEditingController _quantityController;
+  late final TextEditingController _unitController;
   late final TextEditingController _addressController;
   late final TextEditingController _descriptionController;
 
@@ -719,12 +797,13 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
     {'value': 'other',             'label': 'Other'},
   ];
 
+  final List<String> _units = ['kg', 'g', 'L', 'ml', 'pieces', 'portions', 'boxes', 'bags'];
+
   @override
   void initState() {
     super.initState();
     final d = widget.donation;
     _titleController       = TextEditingController(text: d['title'] ?? '');
-    _quantityController    = TextEditingController(text: d['quantity']?.toString() ?? '');
     _addressController     = TextEditingController(text: d['pickupAddress'] ?? '');
     _descriptionController = TextEditingController(text: d['description'] ?? '');
     _selectedCategory      = d['category'] as String?;
@@ -732,6 +811,11 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
     _existingPhotoUrl      = d['photoUrl'] as String?;
     _latitude  = double.tryParse(d['latitude']?.toString() ?? '');
     _longitude = double.tryParse(d['longitude']?.toString() ?? '');
+
+    _quantityController = TextEditingController(
+        text: d['totalQuantity']?.toString() ?? '');
+    _unitController = TextEditingController(
+        text: d['quantityUnit']?.toString() ?? 'kg');
 
     final apiType = d['pickupType'] as String? ?? 'home';
     _pickupTypeKey = _pickupTypes.entries
@@ -747,6 +831,7 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
   void dispose() {
     _titleController.dispose();
     _quantityController.dispose();
+    _unitController.dispose();
     _addressController.dispose();
     _descriptionController.dispose();
     super.dispose();
@@ -846,40 +931,87 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
     if (_addressController.text.trim().isEmpty) {
       _snack('Please enter a pickup address'); return;
     }
+    final qtyValue = double.tryParse(_quantityController.text.trim());
+    if (qtyValue == null || qtyValue <= 0) {
+      _snack('Please enter a valid quantity'); return;
+    }
+    if (_unitController.text.trim().isEmpty) {
+      _snack('Please enter a quantity unit (e.g. kg, L, pieces)'); return;
+    }
+
     setState(() => _isLoading = true);
     try {
-      final id      = widget.donation['id'] as String;
-      // ✅ PUT /api/v1/donations/{id}
-      final uri     = Uri.parse('$baseUrl/donations/$id');
-      final request = http.MultipartRequest('PUT', uri);
-      final token   = AppToken.get();
-      if (token != null) request.headers['Authorization'] = 'Bearer $token';
+      final id    = widget.donation['id'] as String;
+      final token = AppToken.get();
 
-      request.fields['title']         = _titleController.text.trim();
-      request.fields['category']      = _selectedCategory!;
-      request.fields['quantity']      = _quantityController.text.trim();
-      request.fields['pickupAddress'] = _addressController.text.trim();
-      request.fields['pickupType']    = _pickupTypes[_pickupTypeKey]!;
-      request.fields['isUrgent']      = _isUrgent.toString();
-      if (_descriptionController.text.trim().isNotEmpty) {
-        request.fields['description'] = _descriptionController.text.trim();
-      }
-      if (_expiresAt != null) request.fields['expiresAt'] = _expiresAtDisplay;
-      if (_latitude  != null) request.fields['latitude']  = _latitude.toString();
-      if (_longitude != null) request.fields['longitude'] = _longitude.toString();
       if (_photoBytes != null) {
+        final uri     = Uri.parse('$baseUrl/donations/$id');
+        final request = http.MultipartRequest('PUT', uri);
+        if (token != null) request.headers['Authorization'] = 'Bearer $token';
+
+        request.fields['title']         = _titleController.text.trim();
+        request.fields['category']      = _selectedCategory!;
+        request.fields['totalQuantity'] = qtyValue.toString();
+        request.fields['quantityUnit']  = _unitController.text.trim();
+        request.fields['pickupAddress'] = _addressController.text.trim();
+        request.fields['pickupType']    = _pickupTypes[_pickupTypeKey]!;
+        request.fields['isUrgent']      = _isUrgent.toString();
+        if (_descriptionController.text.trim().isNotEmpty) {
+          request.fields['description'] = _descriptionController.text.trim();
+        }
+        if (_expiresAt != null) request.fields['expiresAt'] = _expiresAtDisplay;
+        if (_latitude  != null) request.fields['latitude']  = _latitude.toString();
+        if (_longitude != null) request.fields['longitude'] = _longitude.toString();
+
         request.files.add(http.MultipartFile.fromBytes(
             'photo', _photoBytes!, filename: _photoName ?? 'photo.jpg'));
-      }
 
-      final streamed = await request.send();
-      final response = await http.Response.fromStream(streamed);
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        if (!mounted) return;
-        Navigator.pop(context, true);
+        final streamed = await request.send();
+        final response = await http.Response.fromStream(streamed);
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          if (!mounted) return;
+          Navigator.pop(context, true);
+        } else {
+          final b = jsonDecode(response.body);
+          _snack(b['message'] ?? 'Update failed');
+        }
       } else {
-        final b = jsonDecode(response.body);
-        _snack(b['message'] ?? 'Update failed');
+        final payload = <String, dynamic>{
+          'title':         _titleController.text.trim(),
+          'category':      _selectedCategory!,
+          'totalQuantity': qtyValue,
+          'quantityUnit':  _unitController.text.trim(),
+          'pickupAddress': _addressController.text.trim(),
+          'pickupType':    _pickupTypes[_pickupTypeKey]!,
+          'isUrgent':      _isUrgent,
+        };
+        if (_descriptionController.text.trim().isNotEmpty) {
+          payload['description'] = _descriptionController.text.trim();
+        }
+        if (_expiresAt != null) payload['expiresAt'] = _expiresAtDisplay;
+        if (_latitude  != null) payload['latitude']  = _latitude;
+        if (_longitude != null) payload['longitude'] = _longitude;
+
+        debugPrint('[EditDonation] PUT body: ${jsonEncode(payload)}');
+
+        final res = await http.put(
+          Uri.parse('$baseUrl/donations/$id'),
+          headers: {
+            'Content-Type': 'application/json',
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode(payload),
+        );
+
+        debugPrint('[EditDonation] PUT ${res.statusCode}: ${res.body}');
+
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          if (!mounted) return;
+          Navigator.pop(context, true);
+        } else {
+          final b = jsonDecode(res.body);
+          _snack(b['message'] ?? 'Update failed');
+        }
       }
     } catch (e) {
       _snack('Error: $e');
@@ -976,46 +1108,86 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                   onChanged: (v) => setState(() => _selectedCategory = v),
                 )),
                 const SizedBox(height: 14),
+
                 Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  Expanded(child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _label('Quantity *'),
-                      const SizedBox(height: 6),
-                      _box(TextField(controller: _quantityController,
-                          decoration: _deco('e.g. 5 kg'))),
-                    ],
-                  )),
-                  const SizedBox(width: 12),
-                  Expanded(child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _label('Expiration Date'),
-                      const SizedBox(height: 6),
-                      GestureDetector(
-                        onTap: _pickDate,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 13),
-                          decoration: BoxDecoration(color: kWhite,
-                              borderRadius: BorderRadius.circular(10)),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(child: Text(_expiresAtDisplay,
-                                  style: TextStyle(fontSize: 12,
-                                      color: _expiresAt == null
-                                          ? kSage : Colors.black87),
-                                  overflow: TextOverflow.ellipsis)),
-                              const Icon(Icons.keyboard_arrow_down,
-                                  color: kSage, size: 20),
-                            ],
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _label('Quantity *'),
+                        const SizedBox(height: 6),
+                        _box(TextField(
+                          controller: _quantityController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: _deco('e.g. 5'),
+                        )),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _label('Unit *'),
+                        const SizedBox(height: 6),
+                        _box(DropdownButtonFormField<String>(
+                          value: _units.contains(_unitController.text)
+                              ? _unitController.text
+                              : null,
+                          hint: Text(_unitController.text.isNotEmpty
+                              ? _unitController.text
+                              : 'Unit',
+                              style: const TextStyle(color: kSage, fontSize: 13)),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none, isDense: true,
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 14)),
+                          items: _units.map((u) => DropdownMenuItem(
+                              value: u, child: Text(u))).toList(),
+                          onChanged: (v) {
+                            if (v != null) setState(() => _unitController.text = v);
+                          },
+                        )),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 3,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _label('Expiration Date'),
+                        const SizedBox(height: 6),
+                        GestureDetector(
+                          onTap: _pickDate,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 13),
+                            decoration: BoxDecoration(color: kWhite,
+                                borderRadius: BorderRadius.circular(10)),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(child: Text(_expiresAtDisplay,
+                                    style: TextStyle(fontSize: 12,
+                                        color: _expiresAt == null
+                                            ? kSage : Colors.black87),
+                                    overflow: TextOverflow.ellipsis)),
+                                const Icon(Icons.keyboard_arrow_down,
+                                    color: kSage, size: 20),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    ],
-                  )),
+                      ],
+                    ),
+                  ),
                 ]),
+
                 const SizedBox(height: 14),
                 Container(
                   padding: const EdgeInsets.symmetric(

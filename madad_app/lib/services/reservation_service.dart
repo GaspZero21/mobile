@@ -21,7 +21,7 @@ class ReservationService {
     double? quantity,
     double? fullQuantity,
   }) async {
-    await _ensureBeneficiaryRole();
+    await ensureBeneficiaryRole();
 
     final double requestedQty = quantity ?? fullQuantity ?? 1.0;
 
@@ -44,13 +44,12 @@ class ReservationService {
   }
 
   // ── Ensure BENEFICIARY role + fresh token ─────────────────────────────────
-  Future<void> _ensureBeneficiaryRole() async {
+  // Made public so screens can call it before any beneficiary-only PATCH.
+  Future<void> ensureBeneficiaryRole() async {
     final token        = AppToken.get();
     final refreshToken = AppToken.getRefreshToken();
     if (token == null || refreshToken == null) return;
 
-    // Assign role — 200 = newly assigned, 409 = already has it, both are OK.
-    // 500 = server bug, we log it but DO NOT abort — still try the token refresh.
     try {
       final roleRes = await http.post(
         Uri.parse('$baseUrl/users/me/roles'),
@@ -61,12 +60,10 @@ class ReservationService {
         body: jsonEncode({'role': 'BENEFICIARY'}),
       );
       debugPrint('[Role] → ${roleRes.statusCode} ${roleRes.body}');
-      // 409 = already has role → fine. Anything else we just log and continue.
     } catch (e) {
       debugPrint('[Role] request failed: $e — continuing anyway');
     }
 
-    // Always try to refresh the token regardless of role result
     try {
       final refreshRes = await http.post(
         Uri.parse('$baseUrl/auth/refresh'),
@@ -149,6 +146,22 @@ class ReservationService {
     if (res.statusCode < 200 || res.statusCode >= 300) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       throw Exception(body['message'] ?? 'Failed to cancel reservation');
+    }
+  }
+
+  /// PATCH /api/v1/reservations/:id
+  /// Updates the requestedQuantity of a PENDING reservation (beneficiary only).
+  /// Call ensureBeneficiaryRole() before this if the user may have multiple roles.
+  Future<void> updateReservationQuantity(String id, double quantity) async {
+    final res = await http.patch(
+      Uri.parse('$baseUrl/reservations/$id'),
+      headers: _headers(),
+      body: jsonEncode({'requestedQuantity': quantity}),
+    );
+    debugPrint('[Reservation] updateQuantity $id → ${res.statusCode} ${res.body}');
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['message'] ?? 'Failed to update quantity');
     }
   }
 

@@ -4,6 +4,171 @@ import '../services/reservation_service.dart';
 import '../widgets/shared_bottom_nav.dart';
 import 'chat_screen.dart';
 
+// ── Extracted dialog widget to avoid controller-disposed-after-use bug ────────
+class _EditQuantityDialog extends StatefulWidget {
+  final Map<String, dynamic> reservation;
+  final Future<void> Function(Map<String, dynamic>, double) onUpdate;
+
+  const _EditQuantityDialog({
+    required this.reservation,
+    required this.onUpdate,
+  });
+
+  @override
+  State<_EditQuantityDialog> createState() => _EditQuantityDialogState();
+}
+
+class _EditQuantityDialogState extends State<_EditQuantityDialog> {
+  late final TextEditingController _controller;
+  final _formKey = GlobalKey<FormState>();
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final rawQty = widget.reservation['requestedQuantity'];
+    final currentQty = rawQty is num
+        ? rawQty.toDouble()
+        : double.tryParse(rawQty?.toString() ?? '') ?? 1.0;
+    _controller = TextEditingController(text: currentQty.toStringAsFixed(2));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Update Quantity',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: const Icon(Icons.close, color: kSage),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                widget.reservation['donation']?['title'] ?? 'Reservation',
+                style: const TextStyle(fontSize: 13, color: kSage),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 20),
+              TextFormField(
+                controller: _controller,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Requested Quantity',
+                  labelStyle: const TextStyle(color: kSage),
+                  hintText: 'e.g. 2.5',
+                  prefixIcon: const Icon(Icons.edit_outlined, color: kSage),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: kSage),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: kTeal, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF7F7F5),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Please enter a quantity';
+                  }
+                  final parsed = double.tryParse(value.trim());
+                  if (parsed == null || parsed <= 0) {
+                    return 'Enter a valid positive number';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: _loading ? null : () => Navigator.pop(context),
+                    child: const Text(
+                      'Discard',
+                      style: TextStyle(color: kSage),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: kTeal,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 12),
+                      elevation: 0,
+                    ),
+                    onPressed: _loading
+                        ? null
+                        : () async {
+                            if (!_formKey.currentState!.validate()) return;
+                            final newQty =
+                                double.parse(_controller.text.trim());
+                            setState(() => _loading = true);
+                            Navigator.pop(context);
+                            await widget.onUpdate(widget.reservation, newQty);
+                          },
+                    child: _loading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              color: kWhite,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            'Update',
+                            style: TextStyle(
+                              color: kWhite,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Main screen ───────────────────────────────────────────────────────────────
 class MyReservationsScreen extends StatefulWidget {
   const MyReservationsScreen({super.key});
 
@@ -18,27 +183,27 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
   bool _isLoading = true;
   String? _error;
 
-  // ── FIX: Search state ──────────────────────────────────────────────────────
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _activeStatus = 'All';
 
-  // ── FIX: Filtered list getter ──────────────────────────────────────────────
   List<Map<String, dynamic>> get _filteredReservations {
     if (_searchQuery.isEmpty && _activeStatus == 'All') return _reservations;
 
     final q = _searchQuery.toLowerCase();
     return _reservations.where((r) {
-      final title     = (r['donation']?['title'] ?? '').toString().toLowerCase();
-      final status    = (r['status'] ?? '').toString().toLowerCase();
-      final donorName = (r['donation']?['donor']?['name'] ?? '').toString().toLowerCase();
+      final title =
+          (r['donation']?['title'] ?? '').toString().toLowerCase();
+      final status = (r['status'] ?? '').toString().toLowerCase();
+      final donorName =
+          (r['donation']?['donor']?['name'] ?? '').toString().toLowerCase();
 
       final matchesSearch = q.isEmpty ||
           title.contains(q) ||
           status.contains(q) ||
           donorName.contains(q);
-      final matchesStatus = _activeStatus == 'All' ||
-          status == _activeStatus.toLowerCase();
+      final matchesStatus =
+          _activeStatus == 'All' || status == _activeStatus.toLowerCase();
 
       return matchesSearch && matchesStatus;
     }).toList();
@@ -50,7 +215,6 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
     _fetch();
   }
 
-  // ── FIX: Dispose controller ────────────────────────────────────────────────
   @override
   void dispose() {
     _searchController.dispose();
@@ -78,12 +242,14 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
     }
   }
 
+  // ── Cancel dialog ─────────────────────────────────────────────────────────
   void _showCancelDialog(Map<String, dynamic> reservation) {
     showDialog(
       context: context,
       barrierColor: Colors.black38,
       builder: (_) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -131,9 +297,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 28,
-                      vertical: 12,
-                    ),
+                        horizontal: 28, vertical: 12),
                     elevation: 0,
                   ),
                   onPressed: () async {
@@ -142,7 +306,8 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                   },
                   child: const Text(
                     'Cancel',
-                    style: TextStyle(color: kWhite, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                        color: kWhite, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -163,6 +328,47 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
         const SnackBar(
           content: Text('Reservation cancelled'),
           backgroundColor: kTerra,
+        ),
+      );
+      _fetch();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // ── Edit Quantity dialog — uses extracted StatefulWidget ──────────────────
+  void _showEditQuantityDialog(Map<String, dynamic> reservation) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black38,
+      builder: (_) => _EditQuantityDialog(
+        reservation: reservation,
+        onUpdate: _doUpdateQuantity,
+      ),
+    );
+  }
+
+  Future<void> _doUpdateQuantity(
+    Map<String, dynamic> reservation,
+    double newQty,
+  ) async {
+    final id = reservation['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    try {
+      // Ensure BENEFICIARY role + fresh token before the PATCH (fixes 403)
+      await ReservationService().ensureBeneficiaryRole();
+      await ReservationService().updateReservationQuantity(id, newQty);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Quantity updated successfully'),
+          backgroundColor: kTeal,
         ),
       );
       _fetch();
@@ -203,16 +409,16 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
   // ── Reservation card ──────────────────────────────────────────────────────
   Widget _buildCard(Map<String, dynamic> r) {
     final donation = r['donation'] as Map<String, dynamic>? ?? r;
-    final String? photo    = donation['photoUrl'] as String?;
-    final String  title    = donation['title'] ?? 'Donation';
-    final String  status   = r['status'] ?? 'pending';
-    final String  distance = donation['distance'] != null
-        ? '${donation['distance']}m'
-        : '';
+    final String? photo = donation['photoUrl'] as String?;
+    final String title = donation['title'] ?? 'Donation';
+    final String status = r['status'] ?? 'pending';
+    final String distance =
+        donation['distance'] != null ? '${donation['distance']}m' : '';
     final String timeAgo = _timeAgo(r['createdAt']?.toString());
 
-    final bool canCancel  = status.toLowerCase() == 'pending' ||
-        status.toLowerCase() == 'confirmed';
+    final bool isPending = status.toLowerCase() == 'pending';
+    final bool canCancel =
+        isPending || status.toLowerCase() == 'confirmed';
     final bool isConfirmed = status.toLowerCase() == 'confirmed';
 
     return Container(
@@ -224,7 +430,6 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Photo
           ClipRRect(
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(16),
@@ -239,12 +444,14 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => Container(
                         color: kSage,
-                        child: const Icon(Icons.fastfood, color: kWhite, size: 28),
+                        child: const Icon(Icons.fastfood,
+                            color: kWhite, size: 28),
                       ),
                     )
                   : Container(
                       color: kSage,
-                      child: const Icon(Icons.fastfood, color: kWhite, size: 28),
+                      child: const Icon(Icons.fastfood,
+                          color: kWhite, size: 28),
                     ),
             ),
           ),
@@ -278,6 +485,33 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
 
                 _statusBadge(status),
                 const SizedBox(height: 8),
+
+                if (isPending)
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: kTeal),
+                        padding: const EdgeInsets.symmetric(vertical: 7),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                      onPressed: () => _showEditQuantityDialog(r),
+                      icon: const Icon(Icons.edit_outlined,
+                          color: kTeal, size: 13),
+                      label: const Text(
+                        'Edit Qty',
+                        style: TextStyle(
+                          color: kTeal,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                if (isPending) const SizedBox(height: 6),
 
                 if (canCancel)
                   SizedBox(
@@ -317,9 +551,10 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                         ),
                       ),
                       onPressed: () {
-                        final donorName = (r['donation']?['donor']?['name'] ??
-                                r['donor']?['name'] ??
-                                'Donor') as String;
+                        final donorName =
+                            (r['donation']?['donor']?['name'] ??
+                                    r['donor']?['name'] ??
+                                    'Donor') as String;
                         final donTitle =
                             (r['donation']?['title'] ?? '') as String;
                         Navigator.push(
@@ -364,9 +599,15 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
     return '${diff.inDays}d Ago';
   }
 
-  // ── FIX: Status filter chips ───────────────────────────────────────────────
+  // ── Status filter chips ───────────────────────────────────────────────────
   Widget _buildFilterChips() {
-    const statuses = ['All', 'pending', 'confirmed', 'cancelled', 'completed'];
+    const statuses = [
+      'All',
+      'pending',
+      'confirmed',
+      'cancelled',
+      'completed'
+    ];
     return SizedBox(
       height: 36,
       child: ListView.separated(
@@ -419,11 +660,9 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
         ),
         elevation: 0,
         bottom: PreferredSize(
-          // FIX: increased height to fit search bar + filter chips
           preferredSize: const Size.fromHeight(100),
           child: Column(
             children: [
-              // ── FIX: Search bar — now wired up ────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Container(
@@ -440,12 +679,12 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                       Expanded(
                         child: TextField(
                           controller: _searchController,
-                          // ── WIRED ──────────────────────────────────────
                           onChanged: (value) =>
                               setState(() => _searchQuery = value.trim()),
                           decoration: const InputDecoration(
                             hintText: 'Search For Food',
-                            hintStyle: TextStyle(color: kSage, fontSize: 13),
+                            hintStyle:
+                                TextStyle(color: kSage, fontSize: 13),
                             border: InputBorder.none,
                             isDense: true,
                             contentPadding:
@@ -453,7 +692,6 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                           ),
                         ),
                       ),
-                      // ── Clear button ────────────────────────────────────
                       if (_searchQuery.isNotEmpty)
                         GestureDetector(
                           onTap: () {
@@ -462,14 +700,14 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                           },
                           child: const Padding(
                             padding: EdgeInsets.only(right: 12),
-                            child: Icon(Icons.close, color: kSage, size: 18),
+                            child:
+                                Icon(Icons.close, color: kSage, size: 18),
                           ),
                         ),
                     ],
                   ),
                 ),
               ),
-              // ── FIX: Status filter chips ───────────────────────────────
               const SizedBox(height: 4),
               _buildFilterChips(),
               const SizedBox(height: 10),
@@ -486,7 +724,8 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                     children: [
                       const Icon(Icons.wifi_off, color: kSage, size: 36),
                       const SizedBox(height: 8),
-                      Text(_error!, style: const TextStyle(color: kSage)),
+                      Text(_error!,
+                          style: const TextStyle(color: kSage)),
                       TextButton(
                         onPressed: _fetch,
                         child: const Text('Retry',
@@ -496,12 +735,12 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                   ),
                 )
               : _reservations.isEmpty
-                  // ── FIX: Better empty state ──────────────────────────
                   ? const Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.bookmark_border, size: 64, color: kSage),
+                          Icon(Icons.bookmark_border,
+                              size: 64, color: kSage),
                           SizedBox(height: 12),
                           Text(
                             'No reservations yet',
@@ -519,7 +758,6 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                         ],
                       ),
                     )
-                  // ── FIX: No search results state ─────────────────────
                   : _filteredReservations.isEmpty
                       ? Center(
                           child: Column(
@@ -566,9 +804,8 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                                 crossAxisCount: 2,
                                 crossAxisSpacing: 12,
                                 mainAxisSpacing: 12,
-                                childAspectRatio: 0.7,
+                                childAspectRatio: 0.62,
                               ),
-                              // ── FIX: use _filteredReservations ────────
                               itemCount: _filteredReservations.length,
                               itemBuilder: (_, i) =>
                                   _buildCard(_filteredReservations[i]),

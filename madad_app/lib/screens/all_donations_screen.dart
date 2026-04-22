@@ -9,17 +9,22 @@ class AllDonationsScreen extends StatefulWidget {
   const AllDonationsScreen({super.key});
 
   @override
-  State<AllDonationsScreen> createState() => _AllDonationsScreenState();
+  State<AllDonationsScreen> createState() =>
+      _AllDonationsScreenState();
 }
 
 class _AllDonationsScreenState extends State<AllDonationsScreen> {
-  static const String base = 'https://gasp-test-production.up.railway.app/';
+  static const String base =
+      'https://gasp-test-production.up.railway.app/';
 
   List<Map<String, dynamic>> _all = [];
   List<Map<String, dynamic>> _filtered = [];
   bool _isLoading = true;
   String? _error;
   final _searchCtrl = TextEditingController();
+
+  /// Tracks how many units the current user reserved per donation (this session).
+  final Map<String, double> _reservedCounts = {};
 
   static const _categories = [
     {'label': 'All', 'value': ''},
@@ -53,7 +58,8 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
     });
     try {
       final data = await DonationService().getDonations(
-        category: _activeCategory.isEmpty ? null : _activeCategory,
+        category:
+            _activeCategory.isEmpty ? null : _activeCategory,
         isUrgent: _filterUrgent,
       );
       if (!mounted) return;
@@ -79,8 +85,10 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
           ? _all
           : _all.where((d) {
               final title = (d['title'] ?? '').toLowerCase();
-              final cat = (d['category'] ?? '').toLowerCase();
-              final address = (d['pickupAddress'] ?? '').toLowerCase();
+              final cat =
+                  (d['category'] ?? '').toLowerCase();
+              final address =
+                  (d['pickupAddress'] ?? '').toLowerCase();
               return title.contains(q) ||
                   cat.contains(q) ||
                   address.contains(q);
@@ -94,21 +102,27 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
     if (apiColor == 'red') return Colors.red;
     if (apiColor == 'orange') return Colors.orange;
     if (apiColor == 'green') return Colors.green;
-
     if (d['isUrgent'] == true) return Colors.red;
-    final cat = (d['category'] ?? '').toString().toLowerCase();
-    if (cat == 'cooked_meal' || cat == 'dairy') return Colors.red;
+    final cat =
+        (d['category'] ?? '').toString().toLowerCase();
+    if (cat == 'cooked_meal' || cat == 'dairy') {
+      return Colors.red;
+    }
     if (cat == 'dry_goods') return Colors.orange;
     return Colors.green;
   }
 
-  // ── Quantity badge ────────────────────────────────────────────────────────
+  // ── Quantity badge ─────────────────────────────────────────────────────────
   Widget _buildQuantityBadge(Map<String, dynamic> d) {
+    final donationId =
+        d['id']?.toString() ?? d['_id']?.toString() ?? '';
     final total = d['quantity']?.toString() ?? '';
     final remaining =
         d['remainingQuantity'] ?? d['availableQuantity'];
 
-    if (total.isEmpty && remaining == null) return const SizedBox.shrink();
+    if (total.isEmpty && remaining == null) {
+      return const SizedBox.shrink();
+    }
 
     final bool hasRemaining = remaining != null;
     final String label = hasRemaining
@@ -118,7 +132,8 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
     Color pillColor = kTeal;
     if (hasRemaining) {
       final totalNum = _parseQtyNum(total);
-      final remNum = _parseQtyNum(remaining.toString());
+      final remNum =
+          _parseQtyNum(remaining.toString());
       if (totalNum > 0) {
         final pct = remNum / totalNum;
         if (pct < 0.1) {
@@ -129,31 +144,72 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
       }
     }
 
-    return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: pillColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: pillColor.withOpacity(0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.inventory_2_outlined, size: 10, color: pillColor),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              label,
-              style: TextStyle(
-                  fontSize: 9,
-                  color: pillColor,
-                  fontWeight: FontWeight.w600),
-              overflow: TextOverflow.ellipsis,
+    final double myCount =
+        _reservedCounts[donationId] ?? 0.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Stock badge
+        Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: pillColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border:
+                Border.all(color: pillColor.withOpacity(0.3)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.inventory_2_outlined,
+                  size: 10, color: pillColor),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                      fontSize: 9,
+                      color: pillColor,
+                      fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // "You reserved N" badge (shown only after a reservation)
+        if (myCount > 0) ...[
+          const SizedBox(height: 3),
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                  color: Colors.green.withOpacity(0.35)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check_circle_outline,
+                    size: 10, color: Colors.green),
+                const SizedBox(width: 4),
+                Text(
+                  'You reserved ${_fmtNum(myCount)}',
+                  style: const TextStyle(
+                      fontSize: 9,
+                      color: Colors.green,
+                      fontWeight: FontWeight.w600),
+                ),
+              ],
             ),
           ),
         ],
-      ),
+      ],
     );
   }
 
@@ -171,14 +227,14 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
         : d.toStringAsFixed(1);
   }
 
-  // ── Filter chips ──────────────────────────────────────────────────────────
+  // ── Filter chips ───────────────────────────────────────────────────────────
   Widget _buildFilterChips() {
     return SizedBox(
       height: 38,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        padding: const EdgeInsets.symmetric(
+            horizontal: 16, vertical: 2),
         children: [
           ..._categories.map((cat) {
             final isActive = _activeCategory == cat['value'];
@@ -193,12 +249,14 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                   _fetch();
                 },
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
+                  duration:
+                      const Duration(milliseconds: 180),
                   padding: const EdgeInsets.symmetric(
                       horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: isActive ? kTeal : kWhite,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius:
+                        BorderRadius.circular(20),
                     border: Border.all(
                         color: isActive
                             ? kTeal
@@ -208,7 +266,8 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                       style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
-                          color: isActive ? kWhite : kSage)),
+                          color:
+                              isActive ? kWhite : kSage)),
                 ),
               ),
             );
@@ -223,7 +282,8 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
           GestureDetector(
             onTap: () {
               setState(() {
-                _filterUrgent = _filterUrgent == true ? null : true;
+                _filterUrgent =
+                    _filterUrgent == true ? null : true;
                 _isLoading = true;
               });
               _fetch();
@@ -233,8 +293,9 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
               padding: const EdgeInsets.symmetric(
                   horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color:
-                    _filterUrgent == true ? Colors.red : kWhite,
+                color: _filterUrgent == true
+                    ? Colors.red
+                    : kWhite,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                     color: _filterUrgent == true
@@ -265,7 +326,7 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
     );
   }
 
-  // ── Details modal ─────────────────────────────────────────────────────────
+  // ── Details modal ──────────────────────────────────────────────────────────
   void _showDetailsModal(Map<String, dynamic> d) {
     final photo = d['photoUrl'] as String?;
     final title = d['title'] ?? 'Donation';
@@ -289,8 +350,8 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
       context: context,
       barrierColor: Colors.black38,
       builder: (_) => Dialog(
-        insetPadding:
-            const EdgeInsets.symmetric(horizontal: 24, vertical: 60),
+        insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24, vertical: 60),
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24)),
         clipBehavior: Clip.antiAlias,
@@ -309,10 +370,13 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                                 ? photo
                                 : '$base$photo',
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Container(
-                                color: kSage,
-                                child: const Icon(Icons.fastfood,
-                                    color: kWhite, size: 48)),
+                            errorBuilder: (_, __, ___) =>
+                                Container(
+                                    color: kSage,
+                                    child: const Icon(
+                                        Icons.fastfood,
+                                        color: kWhite,
+                                        size: 48)),
                           )
                         : Container(
                             color: kSage,
@@ -343,18 +407,21 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                           horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
                           color: color,
-                          borderRadius: BorderRadius.circular(20)),
+                          borderRadius:
+                              BorderRadius.circular(20)),
                       child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             const Icon(Icons.circle,
-                                color: Colors.white, size: 8),
+                                color: Colors.white,
+                                size: 8),
                             const SizedBox(width: 4),
                             Text(colorLabel,
                                 style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 10,
-                                    fontWeight: FontWeight.bold)),
+                                    fontWeight:
+                                        FontWeight.bold)),
                           ]),
                     ),
                   ),
@@ -365,8 +432,8 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                       right: 0,
                       child: Container(
                         color: Colors.red.withOpacity(0.85),
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 4),
                         child: const Text(
                             '⚡ URGENT — Pick up as soon as possible!',
                             textAlign: TextAlign.center,
@@ -379,9 +446,11 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                 ],
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                padding:
+                    const EdgeInsets.fromLTRB(20, 16, 20, 20),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
                   children: [
                     _detailRow('Title :', title),
                     _detailRow('Category :', category),
@@ -444,7 +513,7 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                         fontSize: 13, color: kSage))),
           ]));
 
-  // ── Confirm modal ─────────────────────────────────────────────────────────
+  // ── Confirm modal ──────────────────────────────────────────────────────────
   void _showConfirmModal(Map<String, dynamic> d) {
     final photo = d['photoUrl'] as String?;
     final title = d['title'] ?? 'Donation';
@@ -460,7 +529,9 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
         d['remainingQuantity'] ?? d['availableQuantity'];
     final remainingNum = remaining != null
         ? double.tryParse(remaining.toString())
-        : (totalQty.isNotEmpty ? _parseQtyNum(totalQty) : null);
+        : (totalQty.isNotEmpty
+            ? _parseQtyNum(totalQty)
+            : null);
 
     final bool canSplit =
         remainingNum != null && remainingNum > 0;
@@ -469,8 +540,8 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
       context: context,
       barrierColor: Colors.black38,
       builder: (dialogCtx) => Dialog(
-        insetPadding:
-            const EdgeInsets.symmetric(horizontal: 24, vertical: 60),
+        insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24, vertical: 60),
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24)),
         child: Padding(
@@ -527,7 +598,8 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
                     children: [
                       const Text('Quantity Info',
                           style: TextStyle(
@@ -536,8 +608,10 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                               color: kTeal)),
                       const SizedBox(height: 6),
                       Row(children: [
-                        const Icon(Icons.inventory_2_outlined,
-                            size: 13, color: kTeal),
+                        const Icon(
+                            Icons.inventory_2_outlined,
+                            size: 13,
+                            color: kTeal),
                         const SizedBox(width: 6),
                         Text('Total: $totalQty',
                             style: const TextStyle(
@@ -547,15 +621,18 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                       if (remaining != null) ...[
                         const SizedBox(height: 4),
                         Row(children: [
-                          const Icon(Icons.check_circle_outline,
-                              size: 13, color: Colors.green),
+                          const Icon(
+                              Icons.check_circle_outline,
+                              size: 13,
+                              color: Colors.green),
                           const SizedBox(width: 6),
                           Text(
                             'Still available: ${_fmtNum(remaining)}',
                             style: const TextStyle(
                                 fontSize: 12,
                                 color: Colors.green,
-                                fontWeight: FontWeight.w600),
+                                fontWeight:
+                                    FontWeight.w600),
                           ),
                         ]),
                       ],
@@ -563,8 +640,8 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                         const SizedBox(height: 4),
                         const Text(
                           '💡 You can reserve a part of this donation',
-                          style:
-                              TextStyle(fontSize: 10, color: kSage),
+                          style: TextStyle(
+                              fontSize: 10, color: kSage),
                         ),
                       ],
                     ],
@@ -578,7 +655,8 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                     MainAxisAlignment.spaceBetween,
                 children: [
                   TextButton(
-                    onPressed: () => Navigator.pop(dialogCtx),
+                    onPressed: () =>
+                        Navigator.pop(dialogCtx),
                     child: const Text('Cancel',
                         style: TextStyle(
                             color: kTerra,
@@ -591,11 +669,14 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: kTeal,
                           elevation: 0,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 12),
+                          padding:
+                              const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12),
                           shape: RoundedRectangleBorder(
                               borderRadius:
-                                  BorderRadius.circular(20)),
+                                  BorderRadius.circular(
+                                      20)),
                         ),
                         onPressed: () async {
                           Navigator.pop(dialogCtx);
@@ -606,7 +687,8 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                             remainingQty: remainingNum,
                           );
                           if (qty != null && mounted) {
-                            await _doReserve(d, quantity: qty);
+                            await _doReserve(d,
+                                quantity: qty);
                           }
                         },
                         child: const Text('Pick Amount',
@@ -652,7 +734,7 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
     );
   }
 
-  // ── Reserve ───────────────────────────────────────────────────────────────
+  // ── Reserve ────────────────────────────────────────────────────────────────
   Future<void> _doReserve(Map<String, dynamic> d,
       {double? quantity}) async {
     final donationId =
@@ -663,37 +745,60 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
           backgroundColor: Colors.red));
       return;
     }
+
+    final double reservedQty = quantity ?? 1.0;
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => const Center(
           child: CircularProgressIndicator(color: kTeal)),
     );
+
     try {
       await ReservationService()
-          .createReservation(donationId, quantity: quantity);
+          .createReservation(donationId, quantity: reservedQty);
       if (!mounted) return;
       Navigator.pop(context);
 
+      setState(() {
+        // Increment the "you reserved" counter
+        _reservedCounts[donationId] =
+            (_reservedCounts[donationId] ?? 0.0) + reservedQty;
+
+        // Decrease remainingQuantity locally so the badge updates immediately
+        void updateList(List<Map<String, dynamic>> list) {
+          final idx = list.indexWhere((item) =>
+              (item['id']?.toString() ??
+                  item['_id']?.toString()) ==
+              donationId);
+          if (idx == -1) return;
+          final current = double.tryParse(
+                  list[idx]['remainingQuantity']?.toString() ??
+                      list[idx]['quantity']?.toString() ??
+                      '0') ??
+              0.0;
+          final newRemaining =
+              (current - reservedQty).clamp(0.0, current);
+          list[idx] =
+              Map<String, dynamic>.from(list[idx])
+                ..['remainingQuantity'] = newRemaining;
+          // Only remove the card when nothing is left
+          if (newRemaining <= 0) list.removeAt(idx);
+        }
+
+        updateList(_all);
+        updateList(_filtered);
+      });
+
       final msg = quantity != null
-          ? 'Reserved ${quantity % 1 == 0 ? quantity.toInt() : quantity.toStringAsFixed(1)} units! Waiting for donor to accept.'
+          ? 'Reserved ${reservedQty % 1 == 0 ? reservedQty.toInt() : reservedQty.toStringAsFixed(1)} units! Waiting for donor to accept.'
           : 'Reservation sent! Waiting for donor to accept (within 2h).';
 
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(msg),
           backgroundColor: Colors.green,
           duration: const Duration(seconds: 4)));
-
-      setState(() {
-        _all.removeWhere((item) =>
-            (item['id']?.toString() ??
-                item['_id']?.toString()) ==
-            donationId);
-        _filtered.removeWhere((item) =>
-            (item['id']?.toString() ??
-                item['_id']?.toString()) ==
-            donationId);
-      });
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context);
@@ -703,7 +808,7 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
     }
   }
 
-  // ── BUILD ─────────────────────────────────────────────────────────────────
+  // ── BUILD ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -712,19 +817,22 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
         backgroundColor: kTeal,
         foregroundColor: kWhite,
         title: const Text('All Donations',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+            style:
+                TextStyle(fontWeight: FontWeight.bold)),
         elevation: 0,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(100),
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                padding:
+                    const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Container(
                   height: 42,
                   decoration: BoxDecoration(
                       color: kWhite,
-                      borderRadius: BorderRadius.circular(30)),
+                      borderRadius:
+                          BorderRadius.circular(30)),
                   child: Row(children: [
                     const SizedBox(width: 14),
                     const Icon(Icons.search,
@@ -734,13 +842,15 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                       child: TextField(
                         controller: _searchCtrl,
                         decoration: const InputDecoration(
-                          hintText: 'Search by title, category…',
+                          hintText:
+                              'Search by title, category…',
                           hintStyle: TextStyle(
                               color: kSage, fontSize: 13),
                           border: InputBorder.none,
                           isDense: true,
                           contentPadding:
-                              EdgeInsets.symmetric(vertical: 10),
+                              EdgeInsets.symmetric(
+                                  vertical: 10),
                         ),
                       ),
                     ),
@@ -751,7 +861,8 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                           _applyLocalSearch();
                         },
                         child: const Padding(
-                          padding: EdgeInsets.only(right: 12),
+                          padding:
+                              EdgeInsets.only(right: 12),
                           child: Icon(Icons.close,
                               color: kSage, size: 18),
                         ),
@@ -767,7 +878,8 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
       ),
       body: _isLoading
           ? const Center(
-              child: CircularProgressIndicator(color: kTeal))
+              child:
+                  CircularProgressIndicator(color: kTeal))
           : _error != null
               ? Center(
                   child: Column(
@@ -778,8 +890,8 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                             color: kSage, size: 36),
                         const SizedBox(height: 8),
                         Text(_error!,
-                            style:
-                                const TextStyle(color: kSage)),
+                            style: const TextStyle(
+                                color: kSage)),
                         TextButton(
                             onPressed: _fetch,
                             child: const Text('Retry',
@@ -800,7 +912,8 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                                   ? 'No results for "${_searchCtrl.text}"'
                                   : 'No donations match this filter',
                               style: const TextStyle(
-                                  color: kSage, fontSize: 14),
+                                  color: kSage,
+                                  fontSize: 14),
                             ),
                           ]))
                   : RefreshIndicator(
@@ -815,11 +928,12 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                             _buildCard(_filtered[i]),
                       ),
                     ),
-      bottomNavigationBar: const SharedBottomNav(currentIndex: 0),
+      bottomNavigationBar:
+          const SharedBottomNav(currentIndex: 0),
     );
   }
 
-  // ── Donation card ─────────────────────────────────────────────────────────
+  // ── Donation card ──────────────────────────────────────────────────────────
   Widget _buildCard(Map<String, dynamic> d) {
     final photo = d['photoUrl'] as String?;
     final title = d['title'] ?? 'Donation';
@@ -916,8 +1030,10 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                                   color: Colors.black87))),
                       if (urgent)
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
+                          padding:
+                              const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2),
                           decoration: BoxDecoration(
                               color: Colors.red,
                               borderRadius:
@@ -936,8 +1052,10 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                             fontSize: 11, color: kSage)),
                     const SizedBox(height: 3),
                     Row(children: [
-                      const Icon(Icons.location_on_outlined,
-                          size: 11, color: kSage),
+                      const Icon(
+                          Icons.location_on_outlined,
+                          size: 11,
+                          color: kSage),
                       const SizedBox(width: 3),
                       Expanded(
                           child: Text(address,
@@ -955,7 +1073,8 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                         const SizedBox(width: 3),
                         Text(donor,
                             style: const TextStyle(
-                                fontSize: 11, color: kSage)),
+                                fontSize: 11,
+                                color: kSage)),
                       ]),
                     const SizedBox(height: 4),
                     _buildQuantityBadge(d),
@@ -974,14 +1093,18 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                                   color: statusColor)),
                         ]),
                         GestureDetector(
-                          onTap: () => _showConfirmModal(d),
+                          onTap: () =>
+                              _showConfirmModal(d),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 6),
+                            padding:
+                                const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 6),
                             decoration: BoxDecoration(
                                 color: kTerra,
                                 borderRadius:
-                                    BorderRadius.circular(20)),
+                                    BorderRadius.circular(
+                                        20)),
                             child: const Text('Reserve',
                                 style: TextStyle(
                                     color: kWhite,
