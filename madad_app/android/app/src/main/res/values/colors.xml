@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Teal color matching kTeal in your app -->
+    <color name="notification_color">#2E9B8F</color>
+	<color name="ic_launcher_background">#FFFFFF</color>
+</resources>

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "26938537080",
+    "project_id": "madad-app-notifications",
+    "storage_bucket": "madad-app-notifications.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:26938537080:android:0a9a8e541a72ddab1ce98d",
+        "android_client_info": {
+          "package_name": "com.example.madad_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDKqitPu-Qc58ed-eUri0hU2Uzy0pcACfA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

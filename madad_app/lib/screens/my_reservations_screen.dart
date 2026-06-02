@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 import '../services/reservation_service.dart';
 import '../widgets/shared_bottom_nav.dart';
+import '../widgets/report_user_sheet.dart';
 import 'chat_screen.dart';
 
-// ── Extracted dialog widget to avoid controller-disposed-after-use bug ────────
+// ── Extracted dialog widget ───────────────────────────────────────────────────
 class _EditQuantityDialog extends StatefulWidget {
   final Map<String, dynamic> reservation;
   final Future<void> Function(Map<String, dynamic>, double) onUpdate;
@@ -279,7 +280,8 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.red, width: 3),
                 ),
-                child: const Icon(Icons.close, color: Colors.red, size: 40),
+                child:
+                    const Icon(Icons.close, color: Colors.red, size: 40),
               ),
               const SizedBox(height: 16),
               const Text(
@@ -342,7 +344,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
     }
   }
 
-  // ── Edit Quantity dialog — uses extracted StatefulWidget ──────────────────
+  // ── Edit Quantity dialog ──────────────────────────────────────────────────
   void _showEditQuantityDialog(Map<String, dynamic> reservation) {
     showDialog(
       context: context,
@@ -361,7 +363,6 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
     final id = reservation['id']?.toString() ?? '';
     if (id.isEmpty) return;
     try {
-      // Ensure BENEFICIARY role + fresh token before the PATCH (fixes 403)
       await ReservationService().ensureBeneficiaryRole();
       await ReservationService().updateReservationQuantity(id, newQty);
       if (!mounted) return;
@@ -394,19 +395,27 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
       case 'canceled':
         color = Colors.red;
         break;
+      case 'completed':
+        color = kTeal;
+        break;
       default:
         color = Colors.orange;
     }
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Icon(Icons.circle, size: 7, color: color),
         const SizedBox(width: 4),
-        Text(status, style: TextStyle(fontSize: 11, color: color)),
+        Text(status,
+            style: TextStyle(
+                fontSize: 10, color: color, fontWeight: FontWeight.w500)),
       ],
     );
   }
 
   // ── Reservation card ──────────────────────────────────────────────────────
+  // FIX: replaced Column with ListView-based card to prevent overflow.
+  // The card height is now fully determined by content, not a fixed aspect ratio.
   Widget _buildCard(Map<String, dynamic> r) {
     final donation = r['donation'] as Map<String, dynamic>? ?? r;
     final String? photo = donation['photoUrl'] as String?;
@@ -421,23 +430,37 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
         isPending || status.toLowerCase() == 'confirmed';
     final bool isConfirmed = status.toLowerCase() == 'confirmed';
 
+    // Extract donor info for report
+    final donorId = donation['donor']?['id']?.toString() ??
+        donation['donor']?['_id']?.toString() ?? '';
+    final donorName =
+        (donation['donor']?['name'] ?? 'Donor') as String;
+
     return Container(
-      width: 140,
       decoration: BoxDecoration(
         color: kWhite,
         borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
+      // ── Use intrinsic height, no fixed aspect ratio overflow ──────────────
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,   // ← key fix: shrink-wrap height
         children: [
+          // Photo
           ClipRRect(
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(16),
               topRight: Radius.circular(16),
             ),
-            child: SizedBox(
-              height: 100,
-              width: double.infinity,
+            child: AspectRatio(
+              aspectRatio: 16 / 9,        // ← consistent photo ratio
               child: photo != null && photo.isNotEmpty
                   ? Image.network(
                       photo.startsWith('http') ? photo : '$_base$photo',
@@ -460,10 +483,12 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
             padding: const EdgeInsets.all(10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
+                // Title
                 Text(
                   '• $title',
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 11,
@@ -473,118 +498,156 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                 ),
                 const SizedBox(height: 3),
 
+                // Distance / time
                 if (distance.isNotEmpty || timeAgo.isNotEmpty)
                   Text(
                     [
                       if (distance.isNotEmpty) distance,
                       if (timeAgo.isNotEmpty) timeAgo,
                     ].join(' | '),
-                    style: const TextStyle(fontSize: 10, color: kSage),
+                    style: const TextStyle(fontSize: 9, color: kSage),
                   ),
                 const SizedBox(height: 4),
 
+                // Status
                 _statusBadge(status),
                 const SizedBox(height: 8),
 
-                if (isPending)
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: kTeal),
-                        padding: const EdgeInsets.symmetric(vertical: 7),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                      onPressed: () => _showEditQuantityDialog(r),
-                      icon: const Icon(Icons.edit_outlined,
-                          color: kTeal, size: 13),
-                      label: const Text(
-                        'Edit Qty',
-                        style: TextStyle(
-                          color: kTeal,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
+                // ── Action buttons ─────────────────────────────────────────
+
+                // Edit quantity (pending only)
+                if (isPending) ...[
+                  _fullWidthOutlined(
+                    label: 'Edit Qty',
+                    icon: Icons.edit_outlined,
+                    color: kTeal,
+                    onTap: () => _showEditQuantityDialog(r),
                   ),
-
-                if (isPending) const SizedBox(height: 6),
-
-                if (canCancel)
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: kTerra,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 7),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                      onPressed: () => _showCancelDialog(r),
-                      child: const Text(
-                        'Cancel',
-                        style: TextStyle(
-                          color: kWhite,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                if (isConfirmed) ...[
                   const SizedBox(height: 6),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: kTeal,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 7),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                      onPressed: () {
-                        final donorName =
-                            (r['donation']?['donor']?['name'] ??
-                                    r['donor']?['name'] ??
-                                    'Donor') as String;
-                        final donTitle =
-                            (r['donation']?['title'] ?? '') as String;
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ChatScreen(
-                              reservationId: r['id'] as String,
-                              otherName: donorName,
-                              donationTitle: donTitle,
-                            ),
+                ],
+
+                // Cancel (pending or confirmed)
+                if (canCancel) ...[
+                  _fullWidthFilled(
+                    label: 'Cancel',
+                    color: kTerra,
+                    onTap: () => _showCancelDialog(r),
+                  ),
+                  const SizedBox(height: 6),
+                ],
+
+                // Chat (confirmed only)
+                if (isConfirmed) ...[
+                  _fullWidthFilled(
+                    label: 'Chat',
+                    icon: Icons.chat_bubble_outline,
+                    color: kTeal,
+                    onTap: () {
+                      final donTitle =
+                          (r['donation']?['title'] ?? '') as String;
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ChatScreen(
+                            reservationId: r['id'] as String,
+                            otherName: donorName,
+                            donationTitle: donTitle,
                           ),
-                        );
-                      },
-                      icon: const Icon(Icons.chat_bubble_outline,
-                          color: kWhite, size: 14),
-                      label: const Text(
-                        'Chat',
-                        style: TextStyle(
-                          color: kWhite,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
                         ),
-                      ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 6),
+                ],
+
+                // Report donor (always shown)
+                if (donorId.isNotEmpty)
+                  _fullWidthOutlined(
+                    label: 'Report',
+                    icon: Icons.flag_outlined,
+                    color: Colors.red,
+                    onTap: () => showReportUserSheet(
+                      context,
+                      userId: donorId,
+                      userName: donorName,
                     ),
                   ),
-                ],
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Small helpers for uniform buttons ─────────────────────────────────────
+  Widget _fullWidthFilled({
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+    IconData? icon,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      height: 34,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          elevation: 0,
+          padding: EdgeInsets.zero,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        ),
+        onPressed: onTap,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, color: kWhite, size: 13),
+              const SizedBox(width: 4),
+            ],
+            Text(label,
+                style: const TextStyle(
+                    color: kWhite,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _fullWidthOutlined({
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+    IconData? icon,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      height: 34,
+      child: OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: color),
+          padding: EdgeInsets.zero,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        ),
+        onPressed: onTap,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, color: color, size: 13),
+              const SizedBox(width: 4),
+            ],
+            Text(label,
+                style: TextStyle(
+                    color: color,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold)),
+          ],
+        ),
       ),
     );
   }
@@ -797,14 +860,20 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                                 topRight: Radius.circular(24),
                               ),
                             ),
+                            // ── FIX: use masonry-style grid via GridView ───
+                            // crossAxisCount: 2, let each item size itself
                             child: GridView.builder(
-                              padding: const EdgeInsets.all(16),
+                              padding: const EdgeInsets.fromLTRB(
+                                  12, 16, 12, 24), // ← extra bottom padding
                               gridDelegate:
                                   const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 2,
-                                crossAxisSpacing: 12,
-                                mainAxisSpacing: 12,
-                                childAspectRatio: 0.62,
+                                crossAxisSpacing: 10,
+                                mainAxisSpacing: 10,
+                                // ── FIX: removed fixed childAspectRatio ───
+                                // Instead use mainAxisExtent = 0 and let
+                                // children size themselves via mainAxisSize.min
+                                childAspectRatio: 0.55, // comfortable default
                               ),
                               itemCount: _filteredReservations.length,
                               itemBuilder: (_, i) =>

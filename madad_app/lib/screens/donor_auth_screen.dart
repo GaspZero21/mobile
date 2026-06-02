@@ -4,9 +4,6 @@ import 'register_screen.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
 
-/// Entry auth screen for donors/beneficiaries.
-/// The welcome_screen.dart has been removed — this screen is the new entry point
-/// after onboarding for the Donor / Beneficiary role.
 class DonorAuthScreen extends StatelessWidget {
   const DonorAuthScreen({super.key});
 
@@ -85,7 +82,7 @@ class DonorAuthScreen extends StatelessWidget {
                   left: 0,
                   right: 0,
                   child: Container(
-                    padding: const EdgeInsets.fromLTRB(24, 28, 24, 40),
+                    padding: const EdgeInsets.fromLTRB(24, 28, 24, 80),
                     decoration: const BoxDecoration(color: kTeal),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -119,34 +116,38 @@ class DonorAuthScreen extends StatelessWidget {
 
                         const SizedBox(height: 16),
 
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Text(
-                              'Did You Have Already An Account ? ',
-                              style: TextStyle(fontSize: 13, color: kWhite),
-                            ),
-                            GestureDetector(
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => const LoginScreen()),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'Did You Have Already An Account ? ',
+                                style: TextStyle(fontSize: 13, color: kWhite),
                               ),
-                              child: const Text(
-                                'Sign In',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: kTerra,
-                                  decoration: TextDecoration.underline,
-                                  decorationColor: kTerra,
+                              GestureDetector(
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) => const LoginScreen()),
+                                ),
+                                child: const Text(
+                                  'Sign In',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: kTerra,
+                                    decoration: TextDecoration.underline,
+                                    decorationColor: kTerra,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const Text(
-                              ' Now',
-                              style: TextStyle(fontSize: 13, color: kWhite),
-                            ),
-                          ],
+                              const Text(
+                                ' Now',
+                                style: TextStyle(fontSize: 13, color: kWhite),
+                              ),
+                            ],
+                          ),
                         ),
 
                         const SizedBox(height: 10),
@@ -160,7 +161,6 @@ class DonorAuthScreen extends StatelessWidget {
 
                         GestureDetector(
                           onTap: () {
-                            // Continue as guest → go directly to HomeScreen
                             Navigator.pushAndRemoveUntil(
                               context,
                               MaterialPageRoute(

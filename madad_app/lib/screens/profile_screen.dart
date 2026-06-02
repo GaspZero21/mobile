@@ -9,11 +9,24 @@ import '../widgets/shared_bottom_nav.dart';
 import '../screens/my_donations_screen.dart';
 import '../screens/my_reservations_screen.dart';
 import '../screens/notification_settings_screen.dart';
-import '../screens/leaderboard_screen.dart'; // ← ADDED
+import '../screens/leaderboard_screen.dart';
 import '../services/app_token.dart';
 import '../services/auth_service.dart';
 import '../screens/donor_auth_screen.dart';
 import '../screens/gamification_screen.dart';
+import '../services/user_service.dart';
+import '../services/notification_service.dart';
+import '../services/category_service.dart';
+import 'package:geolocator/geolocator.dart';
+
+// ── Category model (from API) ──────────────────────────────────────────────
+class _Cat {
+  final String value; // slug
+  final String label; // name
+  final String emoji;
+  const _Cat(this.value, this.label, [this.emoji = '']);
+}
+
 // ====================== PROFILE SCREEN ======================
 
 class ProfileScreen extends StatefulWidget {
@@ -35,6 +48,16 @@ class _ProfileScreenState extends State<ProfileScreen>
   int _reservCount = 0;
   double _rating = 0;
   bool _loading = true;
+  bool _isDonor = true;
+  bool _isBeneficiary = true;
+
+  // ── Favorite categories ────────────────────────────────────────────────
+  Set<String> _favCategories = {};
+  Set<String> _favCategoriesOriginal = {};
+  bool _savingCats = false;
+  bool _catsExpanded = false;
+  List<_Cat> _allCats = [];
+  bool _catsLoading = false;
 
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
@@ -43,9 +66,15 @@ class _ProfileScreenState extends State<ProfileScreen>
   void initState() {
     super.initState();
     _animCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 600));
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
     _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
-    _load();
+    // Run both in parallel; _loadCategories re-applies _favCategories when done
+    _load().then((_) {
+      debugPrint('[Profile] favCats after load: $_favCategories');
+    });
+    _loadCategories();
   }
 
   @override
@@ -65,7 +94,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
       final headers = {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token'
+        'Authorization': 'Bearer $token',
       };
 
       final results = await Future.wait([
@@ -78,46 +107,75 @@ class _ProfileScreenState extends State<ProfileScreen>
 
       if (results[0].statusCode == 200) {
         final body = jsonDecode(results[0].body) as Map<String, dynamic>;
-        final user = body['data']?['user'] as Map<String, dynamic>?
-            ?? body['data'] as Map<String, dynamic>?
-            ?? {};
+        final user =
+            body['data']?['user'] as Map<String, dynamic>? ??
+            body['data'] as Map<String, dynamic>? ??
+            {};
         _displayName = user['name']?.toString() ?? '';
         _email = user['email']?.toString() ?? '';
         _rating = (user['rating'] as num?)?.toDouble() ?? 0;
         _avatarUrl = user['avatar']?.toString();
+
+        // ── Load saved favorite categories ─────────────────────────
+        // Check every possible nesting the API might use
+        final prefs =
+            user['preferences'] as Map<String, dynamic>? ??
+            user['notificationPreferences'] as Map<String, dynamic>? ??
+            {};
+
+        final raw =
+            prefs['preferred_categories'] ??
+            prefs['preferredCategories'] ??
+            user['preferred_categories'] ??
+            user['preferredCategories'];
+
+        debugPrint('[Profile] raw preferred_categories: $raw');
+
+        if (raw is List && raw.isNotEmpty) {
+          final saved = raw.map((e) => e.toString()).toSet();
+          _favCategories = saved;
+          _favCategoriesOriginal = Set.from(saved);
+          debugPrint('[Profile] Loaded ${saved.length} fav categories: $saved');
+        }
       }
 
       if (results[1].statusCode == 200) {
         final body = jsonDecode(results[1].body) as Map<String, dynamic>;
         final raw =
-            body['data']?['donations'] ?? body['data'] ?? body['donations'] ?? [];
+            body['data']?['donations'] ??
+            body['data'] ??
+            body['donations'] ??
+            [];
         if (raw is List) {
           _donationCount = raw.length;
         } else if (raw is Map) {
           _donationCount = (raw['count'] as num?)?.toInt() ?? 0;
         }
         if (_donationCount == 0) {
-          _donationCount = (body['count'] as num?)?.toInt()
-              ?? (body['total'] as num?)?.toInt()
-              ?? _donationCount;
+          _donationCount =
+              (body['count'] as num?)?.toInt() ??
+              (body['total'] as num?)?.toInt() ??
+              _donationCount;
         }
       }
 
       if (results[2].statusCode == 200) {
         final body = jsonDecode(results[2].body) as Map<String, dynamic>;
-        final raw = body['data']?['reservations']
-            ?? body['data']
-            ?? body['reservations']
-            ?? [];
+        final raw =
+            body['data']?['reservations'] ??
+            body['data'] ??
+            body['reservations'] ??
+            [];
         if (raw is List) {
           _reservCount = raw.length;
         } else if (raw is Map) {
           _reservCount = (raw['count'] as num?)?.toInt() ?? 0;
         }
         if (_reservCount == 0) {
-          _reservCount = (body['count'] as num?)?.toInt()
-              ?? (body['total'] as num?)?.toInt()
-              ?? _reservCount;
+          _reservCount =
+              (body['count'] as num?)?.toInt() ??
+              (body['total'] as num?)?.toInt() ??
+              _reservCount;
         }
       }
 
@@ -126,6 +184,112 @@ class _ProfileScreenState extends State<ProfileScreen>
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  // ── Load categories using CategoryService (same as AddDonationScreen) ──
+  Future<void> _loadCategories() async {
+    setState(() => _catsLoading = true);
+    try {
+      final cats = await CategoryService().getCategories(includeAll: false);
+      if (mounted) {
+        setState(() {
+          _allCats = cats
+              .map(
+                (c) => _Cat(
+                  c['value'] ?? c['slug'] ?? '',
+                  c['label'] ?? c['name'] ?? '',
+                  c['emoji'] ?? '',
+                ),
+              )
+              .where((c) => c.value.isNotEmpty && c.label.isNotEmpty)
+              .toList();
+        });
+      }
+    } catch (_) {
+      // silently fail — chips just won't appear
+    } finally {
+      if (mounted) {
+        setState(() {
+          _catsLoading = false;
+          // Re-apply saved selections now that _allCats is populated.
+          // This guarantees chips repaint with the correct selected state
+          // regardless of which future (_load or _loadCategories) finished first.
+          _favCategories = Set.from(_favCategories);
+        });
+      }
+    }
+  }
+
+  Future<void> _updateLocation() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enable location services')),
+        );
+        return;
+      }
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        final newPerm = await Geolocator.requestPermission();
+        if (newPerm == LocationPermission.denied) return;
+      }
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      await UserService().updateLocation(
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Location updated successfully'),
+          backgroundColor: kTeal,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to update location: $e')));
+    }
+  }
+
+  // ── Save favorite categories ───────────────────────────────────────────
+  Future<void> _saveFavCategories() async {
+    setState(() => _savingCats = true);
+    try {
+      await NotificationService().updatePreferences(
+        preferredCategories: _favCategories.toList(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _favCategoriesOriginal = Set.from(_favCategories);
+        _catsExpanded = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Favorite categories saved ✓'),
+          backgroundColor: kTeal,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+    } finally {
+      if (mounted) setState(() => _savingCats = false);
+    }
+  }
+
+  bool get _catsChanged {
+    if (_favCategories.length != _favCategoriesOriginal.length) return true;
+    return _favCategories.any((c) => !_favCategoriesOriginal.contains(c));
   }
 
   String get _initials {
@@ -139,13 +303,15 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   PageRoute _slideRoute(Widget page) => PageRouteBuilder(
-        pageBuilder: (_, a, __) => page,
-        transitionsBuilder: (_, a, __, child) => SlideTransition(
-          position: Tween(begin: const Offset(1, 0), end: Offset.zero)
-              .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
-          child: child,
-        ),
-      );
+    pageBuilder: (_, a, __) => page,
+    transitionsBuilder: (_, a, __, child) => SlideTransition(
+      position: Tween(
+        begin: const Offset(1, 0),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+      child: child,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -178,41 +344,50 @@ class _ProfileScreenState extends State<ProfileScreen>
       child: Stack(
         children: [
           Positioned(
-              top: -40,
-              right: -40,
-              child: _circle(180, Colors.white.withOpacity(0.04))),
+            top: -40,
+            right: -40,
+            child: _circle(180, Colors.white.withOpacity(0.04)),
+          ),
           Positioned(
-              bottom: 20,
-              left: -30,
-              child: _circle(100, Colors.white.withOpacity(0.04))),
+            bottom: 20,
+            left: -30,
+            child: _circle(100, Colors.white.withOpacity(0.04)),
+          ),
           SafeArea(
             bottom: false,
             child: Column(
               children: [
                 const SizedBox(height: 16),
-                const Text('My Profile',
-                    style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: kWhite,
-                        letterSpacing: 0.4)),
+                const Text(
+                  'My Profile',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: kWhite,
+                    letterSpacing: 0.4,
+                  ),
+                ),
                 const SizedBox(height: 28),
                 _buildAvatar(92),
                 const SizedBox(height: 14),
                 Text(
                   _displayName.isNotEmpty ? _displayName : 'Your Name',
                   style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: kWhite,
-                      letterSpacing: 0.2),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: kWhite,
+                    letterSpacing: 0.2,
+                  ),
                 ),
                 if (_email.isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Text(_email,
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: kWhite.withOpacity(0.65))),
+                  Text(
+                    _email,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: kWhite.withOpacity(0.65),
+                    ),
+                  ),
                 ],
                 const SizedBox(height: 14),
                 Row(
@@ -232,18 +407,27 @@ class _ProfileScreenState extends State<ProfileScreen>
                     borderRadius: BorderRadius.circular(22),
                     boxShadow: [
                       BoxShadow(
-                          color: Colors.black.withOpacity(0.10),
-                          blurRadius: 24,
-                          offset: const Offset(0, 10)),
+                        color: Colors.black.withOpacity(0.10),
+                        blurRadius: 24,
+                        offset: const Offset(0, 10),
+                      ),
                     ],
                   ),
                   child: Row(
                     children: [
-                      _statItem('$_donationCount', 'Donations',
-                          Icons.volunteer_activism_outlined, kTeal),
+                      _statItem(
+                        '$_donationCount',
+                        'Donations',
+                        Icons.volunteer_activism_outlined,
+                        kTeal,
+                      ),
                       _vertDivider(),
-                      _statItem('$_reservCount', 'Reservations',
-                          Icons.bookmark_outline_rounded, kTerra),
+                      _statItem(
+                        '$_reservCount',
+                        'Reservations',
+                        Icons.bookmark_outline_rounded,
+                        kTerra,
+                      ),
                       _vertDivider(),
                       _statItem(
                         _rating > 0 ? _rating.toStringAsFixed(1) : '—',
@@ -264,37 +448,43 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Widget _buildAvatar(double size) => Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: kWhite, width: 3),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.18),
-                blurRadius: 16,
-                offset: const Offset(0, 6))
-          ],
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      border: Border.all(color: kWhite, width: 3),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.18),
+          blurRadius: 16,
+          offset: const Offset(0, 6),
         ),
-        child: ClipOval(
-          child: _avatarUrl != null && _avatarUrl!.isNotEmpty
-              ? Image.network(_avatarUrl!,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _initialsBox(size))
-              : _initialsBox(size),
-        ),
-      );
+      ],
+    ),
+    child: ClipOval(
+      child: _avatarUrl != null && _avatarUrl!.isNotEmpty
+          ? Image.network(
+              _avatarUrl!,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _initialsBox(size),
+            )
+          : _initialsBox(size),
+    ),
+  );
 
   Widget _initialsBox(double size) => Container(
-        color: kSage,
-        child: Center(
-          child: Text(_initials,
-              style: TextStyle(
-                  fontSize: size * 0.34,
-                  fontWeight: FontWeight.bold,
-                  color: kWhite)),
+    color: kSage,
+    child: Center(
+      child: Text(
+        _initials,
+        style: TextStyle(
+          fontSize: size * 0.34,
+          fontWeight: FontWeight.bold,
+          color: kWhite,
         ),
-      );
+      ),
+    ),
+  );
 
   Widget _buildBody(BuildContext context) {
     return Container(
@@ -305,6 +495,8 @@ class _ProfileScreenState extends State<ProfileScreen>
       child: Column(
         children: [
           const SizedBox(height: 8),
+
+          // ── Account ────────────────────────────────────────────────
           _sectionLabel('Account'),
           _menuCard([
             _menuItem(
@@ -314,8 +506,12 @@ class _ProfileScreenState extends State<ProfileScreen>
               iconColor: kTeal,
               onTap: () => Navigator.push(
                 context,
-                _slideRoute(EditProfileScreen(
-                    displayName: _displayName, avatarUrl: _avatarUrl)),
+                _slideRoute(
+                  EditProfileScreen(
+                    displayName: _displayName,
+                    avatarUrl: _avatarUrl,
+                  ),
+                ),
               ).then((_) => _load()),
             ),
             _menuDivider(),
@@ -324,9 +520,10 @@ class _ProfileScreenState extends State<ProfileScreen>
               label: 'My Donations',
               subtitle: '$_donationCount items donated',
               iconColor: const Color(0xFF3D8C7A),
-              onTap: () =>
-                  Navigator.push(context, _slideRoute(const MyDonationsScreen()))
-                      .then((_) => _load()),
+              onTap: () => Navigator.push(
+                context,
+                _slideRoute(const MyDonationsScreen()),
+              ).then((_) => _load()),
             ),
             _menuDivider(),
             _menuItem(
@@ -335,33 +532,45 @@ class _ProfileScreenState extends State<ProfileScreen>
               subtitle: '$_reservCount active reservations',
               iconColor: kTerra,
               onTap: () => Navigator.push(
-                      context, _slideRoute(const MyReservationsScreen()))
-                  .then((_) => _load()),
+                context,
+                _slideRoute(const MyReservationsScreen()),
+              ).then((_) => _load()),
             ),
+            _menuDivider(),
             _menuItem(
-  icon: Icons.emoji_events_rounded,
-  label: 'Community & Rewards',
-  subtitle: 'Points, badges, leaderboard & Food Saver',
-  iconColor: const Color(0xFFD4A017),
-  onTap: () => Navigator.push(context, _slideRoute(const GamificationScreen())),
-),
-_menuDivider(),
+              icon: Icons.emoji_events_rounded,
+              label: 'Community & Rewards',
+              subtitle: 'Points, badges, leaderboard & Food Saver',
+              iconColor: const Color(0xFFD4A017),
+              onTap: () => Navigator.push(
+                context,
+                _slideRoute(const GamificationScreen()),
+              ),
+            ),
           ]),
 
-          // ── PATCHED: Preferences section now includes Leaderboard ──
+          // ── Preferences ────────────────────────────────────────────
           _sectionLabel('Preferences'),
           _menuCard([
-            // ── ADDED: Leaderboard item ────────────────────────────────
+            _menuItem(
+              icon: Icons.location_on_outlined,
+              label: 'Update Location',
+              subtitle: 'Improve nearby donation discovery',
+              iconColor: kTerra,
+              onTap: _updateLocation,
+            ),
+            _menuDivider(),
             _menuItem(
               icon: Icons.leaderboard_rounded,
               label: 'Leaderboard',
-              subtitle: 'Monthly rankings & your badges',
+              subtitle: 'Monthly rankings & badges',
               iconColor: const Color(0xFFD4A017),
               onTap: () => Navigator.push(
-                  context, _slideRoute(const LeaderboardScreen())),
+                context,
+                _slideRoute(const LeaderboardScreen()),
+              ),
             ),
             _menuDivider(),
-            // ─────────────────────────────────────────────────────────
             _menuItem(
               icon: Icons.notifications_none_rounded,
               label: 'Notification Settings',
@@ -374,18 +583,28 @@ _menuDivider(),
                       const NotificationSettingsScreen(),
                   transitionsBuilder: (_, animation, __, child) =>
                       SlideTransition(
-                    position: Tween<Offset>(
-                      begin: const Offset(1, 0),
-                      end: Offset.zero,
-                    ).animate(CurvedAnimation(
-                        parent: animation, curve: Curves.easeOutCubic)),
-                    child: child,
-                  ),
+                        position:
+                            Tween<Offset>(
+                              begin: const Offset(1, 0),
+                              end: Offset.zero,
+                            ).animate(
+                              CurvedAnimation(
+                                parent: animation,
+                                curve: Curves.easeOutCubic,
+                              ),
+                            ),
+                        child: child,
+                      ),
                 ),
               ),
             ),
+            _menuDivider(),
+
+            // ── Favorite Categories inline expandable ─────────────
+            _favCategoriesTile(),
           ]),
 
+          // ── Session ────────────────────────────────────────────────
           _sectionLabel('Session'),
           _menuCard([
             _menuItem(
@@ -403,40 +622,323 @@ _menuDivider(),
     );
   }
 
-  Widget _sectionLabel(String label) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 6),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: Text(label.toUpperCase(),
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: kSage.withOpacity(0.8),
-                  letterSpacing: 1.3)),
-        ),
-      );
+  // ── Favorite Categories expandable tile ───────────────────────────────
+  Widget _favCategoriesTile() {
+    final subtitle = _favCategoriesOriginal.isEmpty
+        ? 'All categories (tap to filter)'
+        : '${_favCategoriesOriginal.length} selected';
 
-  Widget _menuCard(List<Widget> children) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Container(
-          decoration: BoxDecoration(
-            color: kWhite,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4))
+    return Column(
+      children: [
+        InkWell(
+          borderRadius: _catsExpanded
+              ? BorderRadius.zero
+              : const BorderRadius.only(
+                  bottomLeft: Radius.circular(18),
+                  bottomRight: Radius.circular(18),
+                ),
+          onTap: () => setState(() => _catsExpanded = !_catsExpanded),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: Colors.pinkAccent.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.favorite_border_rounded,
+                    color: Colors.pinkAccent,
+                    size: 21,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Favorite Categories',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1A2E2E),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: kSage.withOpacity(0.9),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                AnimatedRotation(
+                  turns: _catsExpanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: kSage.withOpacity(0.5),
+                    size: 22,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 250),
+          crossFadeState: _catsExpanded
+              ? CrossFadeState.showFirst
+              : CrossFadeState.showSecond,
+          firstChild: _buildCatsPanel(),
+          secondChild: const SizedBox.shrink(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCatsPanel() {
+    return Container(
+      decoration: BoxDecoration(
+        color: kSand.withOpacity(0.6),
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(18),
+          bottomRight: Radius.circular(18),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Info hint
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              _favCategories.isEmpty
+                  ? '💡 No filter — you\'ll be notified for all categories.'
+                  : '💡 You\'ll be notified when a donation from a selected category is completed.',
+              style: TextStyle(
+                fontSize: 11,
+                color: kSage.withOpacity(0.8),
+                height: 1.4,
+              ),
+            ),
+          ),
+
+          // Select All / Clear row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              GestureDetector(
+                onTap: () => setState(
+                  () => _favCategories = _allCats.map((c) => c.value).toSet(),
+                ),
+                child: Text(
+                  'Select All',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: kTeal,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Text(
+                  '·',
+                  style: TextStyle(color: kSage.withOpacity(0.4)),
+                ),
+              ),
+              GestureDetector(
+                onTap: () => setState(() => _favCategories = {}),
+                child: Text(
+                  'Clear All',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: kTerra,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             ],
           ),
-          child: Column(children: children),
+          const SizedBox(height: 10),
+
+          // Category chips — loader or chips
+          if (_catsLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    color: kTeal,
+                    strokeWidth: 2,
+                  ),
+                ),
+              ),
+            )
+          else if (_allCats.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'No categories available.',
+                style: TextStyle(fontSize: 12, color: kSage.withOpacity(0.7)),
+              ),
+            )
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _allCats.map((cat) {
+                final selected = _favCategories.contains(cat.value);
+                return GestureDetector(
+                  onTap: () => setState(() {
+                    if (selected) {
+                      _favCategories.remove(cat.value);
+                    } else {
+                      _favCategories.add(cat.value);
+                    }
+                  }),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selected ? kTeal : kWhite,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: selected ? kTeal : const Color(0xFFDDDDDD),
+                      ),
+                      boxShadow: selected
+                          ? [
+                              BoxShadow(
+                                color: kTeal.withOpacity(0.25),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ]
+                          : [],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (cat.emoji.isNotEmpty) ...[
+                          Text(cat.emoji, style: const TextStyle(fontSize: 13)),
+                          const SizedBox(width: 5),
+                        ],
+                        Text(
+                          cat.label,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: selected ? kWhite : kSage,
+                          ),
+                        ),
+                        if (selected) ...[
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.check_rounded,
+                            size: 13,
+                            color: kWhite,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+
+          const SizedBox(height: 14),
+
+          // Save button
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _catsChanged ? kTerra : kSage.withOpacity(0.3),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              onPressed: (_catsChanged && !_savingCats)
+                  ? _saveFavCategories
+                  : null,
+              child: _savingCats
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: kWhite,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : Text(
+                      _catsChanged ? 'Save' : 'No Changes',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: _catsChanged ? kWhite : kSage,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String label) => Padding(
+    padding: const EdgeInsets.fromLTRB(24, 20, 24, 6),
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: kSage.withOpacity(0.8),
+          letterSpacing: 1.3,
         ),
-      );
+      ),
+    ),
+  );
+
+  Widget _menuCard(List<Widget> children) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    child: Container(
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(children: children),
+    ),
+  );
 
   Widget _menuDivider() => const Padding(
-        padding: EdgeInsets.only(left: 72),
-        child: Divider(height: 1, color: Color(0xFFF0EDE6)),
-      );
+    padding: EdgeInsets.only(left: 72),
+    child: Divider(height: 1, color: Color(0xFFF0EDE6)),
+  );
 
   Widget _menuItem({
     required IconData icon,
@@ -445,67 +947,78 @@ _menuDivider(),
     required Color iconColor,
     required VoidCallback onTap,
     bool danger = false,
-  }) =>
-      InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: iconColor, size: 21),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(label,
-                        style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: danger
-                                ? const Color(0xFFBF4444)
-                                : const Color(0xFF1A2E2E))),
-                    const SizedBox(height: 2),
-                    Text(subtitle,
-                        style: TextStyle(
-                            fontSize: 12, color: kSage.withOpacity(0.9))),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right_rounded,
-                  color: kSage.withOpacity(0.5), size: 20),
-            ],
+  }) => InkWell(
+    borderRadius: BorderRadius.circular(18),
+    onTap: onTap,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: iconColor, size: 21),
           ),
-        ),
-      );
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: danger
+                        ? const Color(0xFFBF4444)
+                        : const Color(0xFF1A2E2E),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 12, color: kSage.withOpacity(0.9)),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: kSage.withOpacity(0.5),
+            size: 20,
+          ),
+        ],
+      ),
+    ),
+  );
 
-  Widget _statItem(
-          String value, String label, IconData icon, Color color) =>
+  Widget _statItem(String value, String label, IconData icon, Color color) =>
       Expanded(
         child: Column(
           children: [
             Icon(icon, color: color, size: 22),
             const SizedBox(height: 6),
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF1A2E2E))),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF1A2E2E),
+              ),
+            ),
             const SizedBox(height: 2),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 11,
-                    color: kSage,
-                    fontWeight: FontWeight.w500)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: kSage,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
       );
@@ -514,31 +1027,34 @@ _menuDivider(),
       Container(width: 1, height: 50, color: const Color(0xFFEDE9E0));
 
   Widget _roleChip(String label, Color color) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.2),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withOpacity(0.45), width: 1),
-        ),
-        child: Text(label,
-            style: const TextStyle(
-                fontSize: 12,
-                color: kWhite,
-                fontWeight: FontWeight.w600)),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.2),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: color.withOpacity(0.45), width: 1),
+    ),
+    child: Text(
+      label,
+      style: const TextStyle(
+        fontSize: 12,
+        color: kWhite,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
 
   Widget _circle(double size, Color color) => Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle));
+    width: size,
+    height: size,
+    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+  );
 
   void _showLogoutDialog() {
     showDialog(
       context: context,
       barrierColor: Colors.black45,
       builder: (_) => Dialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         backgroundColor: kWhite,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
@@ -552,20 +1068,27 @@ _menuDivider(),
                   color: const Color(0xFFBF4444).withOpacity(0.10),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.logout_rounded,
-                    color: Color(0xFFBF4444), size: 32),
+                child: const Icon(
+                  Icons.logout_rounded,
+                  color: Color(0xFFBF4444),
+                  size: 32,
+                ),
               ),
               const SizedBox(height: 20),
-              const Text('Log Out?',
-                  style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF1A2E2E))),
+              const Text(
+                'Log Out?',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1A2E2E),
+                ),
+              ),
               const SizedBox(height: 10),
-              Text('Are you sure you want to sign out\nof your account?',
-                  textAlign: TextAlign.center,
-                  style:
-                      TextStyle(fontSize: 14, color: kSage, height: 1.5)),
+              Text(
+                'Are you sure you want to sign out\nof your account?',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: kSage, height: 1.5),
+              ),
               const SizedBox(height: 28),
               Row(
                 children: [
@@ -575,13 +1098,17 @@ _menuDivider(),
                         padding: const EdgeInsets.symmetric(vertical: 13),
                         side: BorderSide(color: kSage.withOpacity(0.4)),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                       ),
                       onPressed: () => Navigator.pop(context),
-                      child: Text('Cancel',
-                          style: TextStyle(
-                              color: kSage,
-                              fontWeight: FontWeight.w600)),
+                      child: Text(
+                        'Cancel',
+                        style: TextStyle(
+                          color: kSage,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -592,7 +1119,8 @@ _menuDivider(),
                         padding: const EdgeInsets.symmetric(vertical: 13),
                         elevation: 0,
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                       ),
                       onPressed: () {
                         Navigator.pop(context);
@@ -600,14 +1128,18 @@ _menuDivider(),
                         Navigator.pushAndRemoveUntil(
                           context,
                           MaterialPageRoute(
-                              builder: (_) => const DonorAuthScreen()),
+                            builder: (_) => const DonorAuthScreen(),
+                          ),
                           (_) => false,
                         );
                       },
-                      child: const Text('Log Out',
-                          style: TextStyle(
-                              color: kWhite,
-                              fontWeight: FontWeight.w700)),
+                      child: const Text(
+                        'Log Out',
+                        style: TextStyle(
+                          color: kWhite,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -625,8 +1157,7 @@ _menuDivider(),
 class EditProfileScreen extends StatefulWidget {
   final String displayName;
   final String? avatarUrl;
-  const EditProfileScreen(
-      {super.key, this.displayName = '', this.avatarUrl});
+  const EditProfileScreen({super.key, this.displayName = '', this.avatarUrl});
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
@@ -680,7 +1211,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   void _onChanged() {
-    final changed = _nameCtrl.text != _origName ||
+    final changed =
+        _nameCtrl.text != _origName ||
         _phoneCtrl.text != _origPhone ||
         _emailCtrl.text != _origEmail ||
         _bioCtrl.text != _origBio ||
@@ -693,23 +1225,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       final token = AppToken.get();
       if (token == null) return;
-      final res = await http.get(Uri.parse('$_baseUrl/users/me'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $token'
-          });
-
+      final res = await http.get(
+        Uri.parse('$_baseUrl/users/me'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body) as Map<String, dynamic>;
-        final user = body['data']?['user'] as Map<String, dynamic>?
-            ?? body['data'] as Map<String, dynamic>?
-            ?? {};
+        final user =
+            body['data']?['user'] as Map<String, dynamic>? ??
+            body['data'] as Map<String, dynamic>? ??
+            {};
         _origName = user['name']?.toString() ?? widget.displayName;
         _origPhone = user['phoneNumber']?.toString() ?? '';
         _origEmail = user['email']?.toString() ?? '';
         _origBio = user['bio']?.toString() ?? '';
         _origCity = user['city']?.toString() ?? '';
-
         if (mounted) {
           setState(() {
             _nameCtrl.text = _origName;
@@ -727,15 +1260,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _pickAvatar() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
-        source: ImageSource.gallery, imageQuality: 80);
+      source: ImageSource.gallery,
+      imageQuality: 80,
+    );
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
     final ext = picked.name.split('.').last.toLowerCase();
     final mime = ext == 'png'
         ? 'image/png'
         : ext == 'webp'
-            ? 'image/webp'
-            : 'image/jpeg';
+        ? 'image/webp'
+        : 'image/jpeg';
     setState(() {
       _avatarBytes = bytes;
       _avatarMime = mime;
@@ -752,12 +1287,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (_avatarBytes != null) {
         final mime = _avatarMime ?? 'image/jpeg';
         final ext = mime.split('/').last;
-        final req = http.MultipartRequest(
-            'PATCH', Uri.parse('$_baseUrl/users/me/avatar'))
-          ..headers['Authorization'] = 'Bearer $token'
-          ..files.add(http.MultipartFile.fromBytes('avatar', _avatarBytes!,
-              filename: 'avatar.$ext',
-              contentType: MediaType('image', ext)));
+        final req =
+            http.MultipartRequest(
+                'PATCH',
+                Uri.parse('$_baseUrl/users/me/avatar'),
+              )
+              ..headers['Authorization'] = 'Bearer $token'
+              ..files.add(
+                http.MultipartFile.fromBytes(
+                  'avatar',
+                  _avatarBytes!,
+                  filename: 'avatar.$ext',
+                  contentType: MediaType('image', ext),
+                ),
+              );
         final streamed = await req.send();
         final avatarRes = await http.Response.fromStream(streamed);
         if (avatarRes.statusCode != 200) {
@@ -770,7 +1313,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         Uri.parse('$_baseUrl/users/me'),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token'
+          'Authorization': 'Bearer $token',
         },
         body: jsonEncode({
           'name': _nameCtrl.text.trim(),
@@ -786,10 +1329,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           _hasChanges = false;
           _avatarBytes = null;
         });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
             content: Text('Profile updated ✓'),
             backgroundColor: kTeal,
-            behavior: SnackBarBehavior.floating));
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
         Navigator.pop(context);
       } else {
         final b = jsonDecode(res.body) as Map<String, dynamic>;
@@ -797,18 +1343,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
     } catch (e) {
       if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
             content: Text('Error: $e'),
             backgroundColor: const Color(0xFFBF4444),
-            behavior: SnackBarBehavior.floating));
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
   }
 
   String get _initials {
-    final name =
-        _nameCtrl.text.isNotEmpty ? _nameCtrl.text : widget.displayName;
+    final name = _nameCtrl.text.isNotEmpty
+        ? _nameCtrl.text
+        : widget.displayName;
     if (name.isEmpty) return '?';
     return name
         .trim()
@@ -833,8 +1383,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Widget _buildHeader(BuildContext context) {
-    final avatarSize =
-        (MediaQuery.of(context).size.width * 0.22).clamp(80.0, 110.0);
+    final avatarSize = (MediaQuery.of(context).size.width * 0.22).clamp(
+      80.0,
+      110.0,
+    );
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -846,35 +1398,46 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       child: Stack(
         children: [
           Positioned(
-              top: -20,
-              right: -20,
-              child: Container(
-                  width: 130,
-                  height: 130,
-                  decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.04),
-                      shape: BoxShape.circle))),
+            top: -20,
+            right: -20,
+            child: Container(
+              width: 130,
+              height: 130,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.04),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
           SafeArea(
             bottom: false,
             child: Column(
               children: [
                 Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
                   child: Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                            color: kWhite, size: 20),
+                        icon: const Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          color: kWhite,
+                          size: 20,
+                        ),
                         onPressed: () => Navigator.pop(context),
                       ),
                       const Expanded(
-                        child: Text('Edit Profile',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                color: kWhite)),
+                        child: Text(
+                          'Edit Profile',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: kWhite,
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 48),
                     ],
@@ -893,20 +1456,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           border: Border.all(color: kWhite, width: 3),
                           boxShadow: [
                             BoxShadow(
-                                color: Colors.black.withOpacity(0.18),
-                                blurRadius: 14,
-                                offset: const Offset(0, 5))
+                              color: Colors.black.withOpacity(0.18),
+                              blurRadius: 14,
+                              offset: const Offset(0, 5),
+                            ),
                           ],
                         ),
                         child: ClipOval(
                           child: _avatarBytes != null
                               ? Image.memory(_avatarBytes!, fit: BoxFit.cover)
                               : (_avatarUrl != null && _avatarUrl!.isNotEmpty)
-                                  ? Image.network(_avatarUrl!,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) =>
-                                          _initialsBox(avatarSize))
-                                  : _initialsBox(avatarSize),
+                              ? Image.network(
+                                  _avatarUrl!,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) =>
+                                      _initialsBox(avatarSize),
+                                )
+                              : _initialsBox(avatarSize),
                         ),
                       ),
                       Positioned(
@@ -920,8 +1486,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             shape: BoxShape.circle,
                             border: Border.all(color: kWhite, width: 2),
                           ),
-                          child: const Icon(Icons.camera_alt_rounded,
-                              color: kWhite, size: 15),
+                          child: const Icon(
+                            Icons.camera_alt_rounded,
+                            color: kWhite,
+                            size: 15,
+                          ),
                         ),
                       ),
                     ],
@@ -933,14 +1502,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       ? _nameCtrl.text
                       : widget.displayName,
                   style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: kWhite),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: kWhite,
+                  ),
                 ),
                 const SizedBox(height: 4),
-                Text('Tap photo to change',
-                    style: TextStyle(
-                        fontSize: 12, color: kWhite.withOpacity(0.6))),
+                Text(
+                  'Tap photo to change',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: kWhite.withOpacity(0.6),
+                  ),
+                ),
                 const SizedBox(height: 28),
               ],
             ),
@@ -951,15 +1525,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Widget _initialsBox(double size) => Container(
-        color: kSage,
-        child: Center(
-          child: Text(_initials,
-              style: TextStyle(
-                  fontSize: size * 0.34,
-                  fontWeight: FontWeight.bold,
-                  color: kWhite)),
+    color: kSage,
+    child: Center(
+      child: Text(
+        _initials,
+        style: TextStyle(
+          fontSize: size * 0.34,
+          fontWeight: FontWeight.bold,
+          color: kWhite,
         ),
-      );
+      ),
+    ),
+  );
 
   Widget _buildForm() {
     return Container(
@@ -973,11 +1550,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           _formCard([
             _field('Full Name', _nameCtrl, Icons.person_outline_rounded),
             _divider(),
-            _field('Phone Number', _phoneCtrl, Icons.phone_outlined,
-                type: TextInputType.phone),
+            _field(
+              'Phone Number',
+              _phoneCtrl,
+              Icons.phone_outlined,
+              type: TextInputType.phone,
+            ),
             _divider(),
-            _field('E-Mail', _emailCtrl, Icons.mail_outline_rounded,
-                type: TextInputType.emailAddress, readOnly: true),
+            _field(
+              'E-Mail',
+              _emailCtrl,
+              Icons.mail_outline_rounded,
+              type: TextInputType.emailAddress,
+              readOnly: true,
+            ),
           ]),
           const SizedBox(height: 16),
           _formCard([
@@ -987,8 +1573,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ]),
           const SizedBox(height: 32),
           AnimatedSlide(
-            offset:
-                _hasChanges ? Offset.zero : const Offset(0, 0.15),
+            offset: _hasChanges ? Offset.zero : const Offset(0, 0.15),
             duration: const Duration(milliseconds: 280),
             curve: Curves.easeOut,
             child: AnimatedOpacity(
@@ -1002,7 +1587,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     backgroundColor: kTerra,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                   ),
                   onPressed: _isSaving ? null : _save,
                   child: _isSaving
@@ -1010,13 +1596,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           width: 22,
                           height: 22,
                           child: CircularProgressIndicator(
-                              color: kWhite, strokeWidth: 2.5))
-                      : const Text('Save Changes',
+                            color: kWhite,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                      : const Text(
+                          'Save Changes',
                           style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: kWhite,
-                              letterSpacing: 0.3)),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: kWhite,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -1027,24 +1619,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Widget _formCard(List<Widget> children) => Container(
-        decoration: BoxDecoration(
-          color: kWhite,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4))
-          ],
+    decoration: BoxDecoration(
+      color: kWhite,
+      borderRadius: BorderRadius.circular(18),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 10,
+          offset: const Offset(0, 4),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
-        child: Column(children: children),
-      );
+      ],
+    ),
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+    child: Column(children: children),
+  );
 
   Widget _divider() => const Padding(
-        padding: EdgeInsets.only(left: 36),
-        child: Divider(height: 1, color: Color(0xFFF0EDE6)),
-      );
+    padding: EdgeInsets.only(left: 36),
+    child: Divider(height: 1, color: Color(0xFFF0EDE6)),
+  );
 
   Widget _field(
     String label,
@@ -1061,20 +1654,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Icon(icon,
-                color: readOnly ? kSage.withOpacity(0.4) : kTeal, size: 20),
+            child: Icon(
+              icon,
+              color: readOnly ? kSage.withOpacity(0.4) : kTeal,
+              size: 20,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: kSage,
-                        letterSpacing: 0.5)),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: kSage,
+                    letterSpacing: 0.5,
+                  ),
+                ),
                 const SizedBox(height: 3),
                 TextField(
                   controller: ctrl,
@@ -1082,11 +1681,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   readOnly: readOnly,
                   maxLines: maxLines,
                   style: TextStyle(
-                      fontSize: 14,
-                      color: readOnly
-                          ? kSage.withOpacity(0.5)
-                          : const Color(0xFF1A2E2E),
-                      fontWeight: FontWeight.w500),
+                    fontSize: 14,
+                    color: readOnly
+                        ? kSage.withOpacity(0.5)
+                        : const Color(0xFF1A2E2E),
+                    fontWeight: FontWeight.w500,
+                  ),
                   decoration: const InputDecoration(
                     border: InputBorder.none,
                     isDense: true,
@@ -1099,8 +1699,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           if (!readOnly)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Icon(Icons.edit_outlined,
-                  color: kSage.withOpacity(0.5), size: 16),
+              child: Icon(
+                Icons.edit_outlined,
+                color: kSage.withOpacity(0.5),
+                size: 16,
+              ),
             ),
         ],
       ),

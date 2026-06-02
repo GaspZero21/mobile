@@ -1,8 +1,8 @@
-// lib/screens/notification_settings_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/colors.dart';
+import '../services/push_notification_service.dart';
+import '../services/notification_service.dart'; // ← THIS was missing
 
 class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({super.key});
@@ -14,14 +14,12 @@ class NotificationSettingsScreen extends StatefulWidget {
 
 class _NotificationSettingsScreenState
     extends State<NotificationSettingsScreen> {
-  // ─── Settings state ────────────────────────────────────────────────────────
   bool _reservationRequested = true;
   bool _reservationAccepted  = true;
   bool _reservationCancelled = true;
   bool _donationCompleted    = true;
   bool _newMessages          = true;
   bool _pushEnabled          = true;
-
   bool _loading = true;
 
   static const _kReservationRequested = 'notif_reservation_requested';
@@ -53,11 +51,28 @@ class _NotificationSettingsScreenState
   Future<void> _saveSetting(String key, bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(key, value);
+
+    try {
+      await NotificationService().updatePreferences(
+        reservationRequested: _reservationRequested,
+        reservationAccepted:  _reservationAccepted,
+        reservationCancelled: _reservationCancelled,
+        donationCompleted:    _donationCompleted,
+        newMessages:          _newMessages,
+      );
+    } catch (e) {
+      debugPrint('[Notif] Failed to sync preferences: $e');
+    }
   }
 
   Future<void> _togglePush(bool value) async {
     setState(() => _pushEnabled = value);
     await _saveSetting(_kPushEnabled, value);
+    if (value) {
+      await PushNotificationService.init();
+    } else {
+      await PushNotificationService.dispose();
+    }
   }
 
   @override
@@ -338,3 +353,6 @@ class _NotificationSettingsScreenState
   Widget _divider() =>
       const Divider(height: 1, indent: 70, color: Color(0xFFEEEEEE));
 }
+
+
+

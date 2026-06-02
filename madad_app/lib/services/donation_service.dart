@@ -208,6 +208,41 @@ class DonationService {
       throw Exception(body['message'] ?? 'Failed to delete donation');
     }
   }
+  /// PATCH /api/v1/donations/{id}/cancel
+  Future<void> cancelDonation(String id) async {
+    final res = await http.patch(
+      Uri.parse('$baseUrl/donations/$id/cancel'),
+      headers: _headers(),
+    );
+    debugPrint('[Donation] cancelDonation $id → ${res.statusCode}');
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['message'] ?? 'Failed to cancel donation');
+    }
+  }
+
+  /// PATCH /api/v1/donations/{id}/complete
+  Future<void> completeDonation(String id) async {
+    final res = await http.patch(
+      Uri.parse('$baseUrl/donations/$id/complete'),
+      headers: _headers(),
+    );
+    debugPrint('[Donation] completeDonation $id → ${res.statusCode}');
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw Exception(body['message'] ?? 'Failed to complete donation');
+    }
+  }
+
+  /// GET /api/v1/donations/{id}/reservations  (donor only)
+  Future<List<Map<String, dynamic>>> getDonationReservations(String id) async {
+    final res = await http.get(
+      Uri.parse('$baseUrl/donations/$id/reservations'),
+      headers: _headers(),
+    );
+    debugPrint('[Donation] getDonationReservations $id → ${res.statusCode}');
+    return _handleList(res);
+  }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   List<Map<String, dynamic>> _handleList(http.Response response) {

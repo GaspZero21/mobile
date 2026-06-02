@@ -73,9 +73,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             itemBuilder: (_, index) => _buildSlide(_slides[index]),
           ),
           Positioned(
-            bottom: 40,
-            left: 24,
-            right: 24,
+           bottom: 0,
+  left: 0,
+  right: 0,
+  child: SafeArea(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -119,8 +122,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                 ),
               ],
-            ),
-          ),
+                ),
+  ),
+),)
         ],
       ),
     );
@@ -148,7 +152,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
         ),
         Positioned(
-          bottom: 100,
+          bottom: 90,
           left: 24,
           right: 24,
           child: Column(

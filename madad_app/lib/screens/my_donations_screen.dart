@@ -8,8 +8,9 @@ import '../theme/colors.dart';
 import '../services/app_token.dart';
 import '../services/reservation_service.dart';
 import '../widgets/shared_bottom_nav.dart';
-
-import 'dart:html' as html;
+import 'package:image_picker/image_picker.dart';
+import '../services/donation_service.dart';
+import '../widgets/report_user_sheet.dart';
 
 // ── My Donations List ─────────────────────────────────────────────────────────
 class MyDonationsScreen extends StatefulWidget {
@@ -41,6 +42,10 @@ class _MyDonationsScreenState extends State<MyDonationsScreen> {
     };
   }
 
+  /// Safely extract the donation id — API may return 'id' or '_id'
+  String _donationId(Map<String, dynamic> d) =>
+      d['id']?.toString() ?? d['_id']?.toString() ?? '';
+
   Future<void> _fetch() async {
     setState(() { _isLoading = true; _error = null; });
     try {
@@ -69,25 +74,108 @@ class _MyDonationsScreenState extends State<MyDonationsScreen> {
       setState(() { _error = e.toString(); _isLoading = false; });
     }
   }
-
+  
   Future<void> _delete(String id) async {
+    if (id.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot identify donation'),
+            backgroundColor: Colors.red));
+      return;
+    }
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Delete donation?'),
         content: const Text('This cannot be undone.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+              child: const Text('Cancel', style: TextStyle(color: kSage))),
           TextButton(onPressed: () => Navigator.pop(context, true),
               child: const Text('Delete',
-                  style: TextStyle(color: Colors.red))),
+                  style: TextStyle(color: Colors.red,
+                      fontWeight: FontWeight.bold))),
         ],
       ),
     );
     if (confirm != true) return;
-    await http.delete(Uri.parse('$baseUrl/donations/$id'), headers: _headers);
+
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+          child: CircularProgressIndicator(color: kTeal)),
+    );
+
+    try {
+      final res = await http.delete(
+          Uri.parse('$baseUrl/donations/$id'), headers: _headers);
+      if (!mounted) return;
+      Navigator.pop(context); // dismiss loading
+
+      debugPrint('[Delete] status=${res.statusCode} body=${res.body}');
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Donation deleted'),
+              backgroundColor: Colors.green));
+        _fetch(); // refresh list
+      } else {
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(body['message'] ?? 'Delete failed'),
+              backgroundColor: Colors.red));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+    }
+  }
+  Future<void> _cancelDonation(String id) async {
+   final confirm = await showDialog<bool>(
+    context: context,
+    builder: (_) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text('Cancel donation?'),
+      content: const Text('This will cancel the donation and notify beneficiaries.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Back', style: TextStyle(color: kSage)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Cancel Donation',
+              style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+        ),
+      ],
+    ),
+    );
+    if (confirm != true) return;
+    showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => const Center(child: CircularProgressIndicator(color: kTeal)),
+    );
+   try {
+    await DonationService().cancelDonation(id);
+    if (!mounted) return;
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Donation cancelled'), backgroundColor: Colors.orange),
+    );
     _fetch();
+    } catch (e) {
+    if (!mounted) return;
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+    );
+   }
   }
 
   void _openEdit(Map<String, dynamic> donation) {
@@ -162,6 +250,7 @@ class _MyDonationsScreenState extends State<MyDonationsScreen> {
     final status = d['status'] ?? 'available';
     final urgent = d['isUrgent'] == true;
     final statusColor = status == 'available' ? Colors.green : kTerra;
+    final id = _donationId(d);
 
     return Container(
       decoration: BoxDecoration(
@@ -224,22 +313,37 @@ class _MyDonationsScreenState extends State<MyDonationsScreen> {
                   ),
                 const SizedBox(height: 10),
                 Row(children: [
-                  _btn('Reservations', kTeal, () => _showReservations(d)),
-                  const SizedBox(width: 6),
-                  _btn('Edit', kTerra, () => _openEdit(d),
-                      icon: Icons.edit_outlined),
-                  const SizedBox(width: 6),
-                  GestureDetector(
-                    onTap: () => _delete(d['id']),
-                    child: Container(
-                      width: 30, height: 30,
-                      decoration: BoxDecoration(color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(8)),
-                      child: const Icon(Icons.delete_outline,
-                          color: Colors.red, size: 16),
-                    ),
-                  ),
-                ]),
+  _btn('Reservations', kTeal, () => _showReservations(d)),
+  const SizedBox(width: 6),
+  _btn('Edit', kTerra, () => _openEdit(d), icon: Icons.edit_outlined),
+  const SizedBox(width: 6),
+  // Cancel donation button (only when available)
+  if (status == 'available') ...[
+    GestureDetector(
+      onTap: () => _cancelDonation(id),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+            color: Colors.orange.shade50,
+            borderRadius: BorderRadius.circular(8)),
+        child: const Icon(Icons.cancel_outlined,
+            color: Colors.orange, size: 16),
+      ),
+    ),
+    const SizedBox(width: 6),
+  ],
+  GestureDetector(
+    onTap: () => _delete(id),
+    child: Container(
+      width: 30, height: 30,
+      decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(8)),
+      child: const Icon(Icons.delete_outline,
+          color: Colors.red, size: 16),
+    ),
+  ),
+]),
               ],
             ),
           ),
@@ -293,6 +397,9 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
     };
   }
 
+  String _donationId(Map<String, dynamic> d) =>
+      d['id']?.toString() ?? d['_id']?.toString() ?? '';
+
   @override
   void initState() {
     super.initState();
@@ -300,52 +407,44 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
   }
 
   Future<void> _fetch() async {
-    setState(() { _loading = true; _actionError = null; });
-    try {
-      final donationId = widget.donation['id'] as String?;
+  setState(() { _loading = true; _actionError = null; });
+  try {
+    final donationId = _donationId(widget.donation);
+    if (donationId.isEmpty) throw Exception('Unknown donation ID');
 
-      final res = await http.get(
-        Uri.parse('$baseUrl/reservations'),
-        headers: _headers,
-      );
-      debugPrint('[DonorReservations] ${res.statusCode} ${res.body}');
+    // Use the dedicated endpoint: GET /donations/{id}/reservations
+    final res = await http.get(
+      Uri.parse('$baseUrl/donations/$donationId/reservations'),
+      headers: _headers,
+    );
 
-      if (res.statusCode != 200) {
-        final body = jsonDecode(res.body) as Map<String, dynamic>;
-        throw Exception(body['message'] ?? 'Error ${res.statusCode}');
-      }
-
+    if (res.statusCode != 200) {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
-      final data = body['data'];
-      List list  = [];
-      if (data is List) {
-        list = data;
-      } else if (data is Map) {
-        if (data['reservations'] is List) list = data['reservations'];
-        else if (data['items'] is List)   list = data['items'];
-      } else if (body['reservations'] is List) {
-        list = body['reservations'];
-      }
-
-      final all = List<Map<String, dynamic>>.from(list);
-      final filtered = donationId == null
-          ? all
-          : all.where((r) {
-              final don = r['donation'];
-              if (don is Map) return don['id']?.toString() == donationId;
-              return r['donationId']?.toString() == donationId;
-            }).toList();
-
-      if (!mounted) return;
-      setState(() {
-        _reservations = filtered;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() { _loading = false; _actionError = e.toString(); });
+      throw Exception(body['message'] ?? 'Error ${res.statusCode}');
     }
+
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final data = body['data'];
+    List list = [];
+    if (data is List) {
+      list = data;
+    } else if (data is Map) {
+      if (data['reservations'] is List) list = data['reservations'];
+      else if (data['items'] is List)   list = data['items'];
+    } else if (body['reservations'] is List) {
+      list = body['reservations'];
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _reservations = List<Map<String, dynamic>>.from(list);
+      _loading = false;
+    });
+  } catch (e) {
+    if (!mounted) return;
+    setState(() { _loading = false; _actionError = e.toString(); });
   }
+}
 
   Future<void> _confirm(String id) async {
     _showLoadingOverlay();
@@ -606,11 +705,10 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
     final requester = r['requester'] ?? r['beneficiary'] ?? r['user'] ?? {};
     final name      = requester['name'] as String? ?? 'Unknown';
     final status    = (r['status'] as String? ?? 'pending').toLowerCase();
-    final id        = r['id'] as String? ?? '';
+    final id        = r['id']?.toString() ?? r['_id']?.toString() ?? '';
     final isPending   = status == 'pending';
     final isConfirmed = status == 'confirmed';
 
-    // ── FIXED: safely parse requestedQuantity — API may return String or num ─
     final rawQty = r['requestedQuantity'] ?? r['quantity'] ?? 0;
     final double requestedQty = rawQty is num
         ? rawQty.toDouble()
@@ -653,7 +751,6 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
                 if (timeStr.isNotEmpty)
                   Text(timeStr, style: const TextStyle(
                       fontSize: 11, color: kSage)),
-                // Show requested quantity
                 Text(
                   'Qty: ${requestedQty == requestedQty.roundToDouble() ? requestedQty.toInt() : requestedQty.toStringAsFixed(2)}',
                   style: const TextStyle(fontSize: 11, color: kSage),
@@ -678,6 +775,28 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
               ]),
             ),
           ]),
+          // After the status badge container, add:
+const SizedBox(width: 8),
+GestureDetector(
+  onTap: () {
+    final requesterId = requester['id']?.toString() ?? requester['_id']?.toString() ?? '';
+    if (requesterId.isNotEmpty) {
+      showReportUserSheet(context, userId: requesterId, userName: name);
+    }
+  },
+  child: Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: Colors.red.shade50,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(Icons.flag_outlined, size: 12, color: Colors.red),
+      SizedBox(width: 3),
+      Text('Report', style: TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.w600)),
+    ]),
+  ),
+),
 
           if (isPending || isConfirmed) ...[
             const SizedBox(height: 10),
@@ -685,42 +804,23 @@ class _ReservationsSheetState extends State<_ReservationsSheet> {
               const SizedBox(width: 56),
 
               if (isPending) ...[
-                _actionBtn(
-                  label: 'Confirm',
-                  color: Colors.green,
-                  icon: Icons.check,
-                  onTap: () => _confirm(id),
-                ),
+                _actionBtn(label: 'Confirm', color: Colors.green,
+                    icon: Icons.check, onTap: () => _confirm(id)),
                 const SizedBox(width: 6),
-                _actionBtn(
-                  label: 'Qty',
-                  color: kTeal,
-                  icon: Icons.edit_outlined,
-                  onTap: () => _updateQuantity(id, requestedQty),
-                ),
+                _actionBtn(label: 'Qty', color: kTeal,
+                    icon: Icons.edit_outlined,
+                    onTap: () => _updateQuantity(id, requestedQty)),
                 const SizedBox(width: 6),
-                _actionBtn(
-                  label: 'Cancel',
-                  color: kTerra,
-                  icon: Icons.close,
-                  onTap: () => _cancel(id),
-                ),
+                _actionBtn(label: 'Cancel', color: kTerra,
+                    icon: Icons.close, onTap: () => _cancel(id)),
               ],
 
               if (isConfirmed) ...[
-                _actionBtn(
-                  label: 'Completed',
-                  color: kTeal,
-                  icon: Icons.done_all,
-                  onTap: () => _complete(id),
-                ),
+                _actionBtn(label: 'Completed', color: kTeal,
+                    icon: Icons.done_all, onTap: () => _complete(id)),
                 const SizedBox(width: 8),
-                _actionBtn(
-                  label: 'Cancel',
-                  color: kTerra,
-                  icon: Icons.close,
-                  onTap: () => _cancel(id),
-                ),
+                _actionBtn(label: 'Cancel', color: kTerra,
+                    icon: Icons.close, onTap: () => _cancel(id)),
               ],
             ]),
           ],
@@ -771,6 +871,7 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
   late final TextEditingController _descriptionController;
 
   String?   _selectedCategory;
+  String?   _selectedUnit;
   String    _pickupTypeKey = 'Home';
   bool      _isUrgent   = false;
   DateTime? _expiresAt;
@@ -814,8 +915,10 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
 
     _quantityController = TextEditingController(
         text: d['totalQuantity']?.toString() ?? '');
-    _unitController = TextEditingController(
-        text: d['quantityUnit']?.toString() ?? 'kg');
+
+    final unitFromApi = d['quantityUnit']?.toString() ?? 'kg';
+    _selectedUnit = _units.contains(unitFromApi) ? unitFromApi : _units.first;
+    _unitController = TextEditingController(text: _selectedUnit);
 
     final apiType = d['pickupType'] as String? ?? 'home';
     _pickupTypeKey = _pickupTypes.entries
@@ -838,21 +941,17 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
   }
 
   Future<void> _pickPhoto() async {
-    if (kIsWeb) {
-      final input = html.FileUploadInputElement()
-        ..accept = 'image/*'
-        ..click();
-      await input.onChange.first;
-      if (input.files == null || input.files!.isEmpty) return;
-      final file   = input.files!.first;
-      final reader = html.FileReader();
-      reader.readAsArrayBuffer(file);
-      await reader.onLoad.first;
-      setState(() {
-        _photoBytes = Uint8List.fromList(reader.result as List<int>);
-        _photoName  = file.name;
-      });
-    }
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    setState(() {
+      _photoBytes = bytes;
+      _photoName  = picked.name;
+    });
   }
 
   bool get _hasNewPhoto => _photoBytes != null;
@@ -876,7 +975,7 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
   }
 
   String get _expiresAtDisplay {
-    if (_expiresAt == null) return 'Select Date';
+    if (_expiresAt == null) return 'Expiry Date';
     return '${_expiresAt!.year}-'
         '${_expiresAt!.month.toString().padLeft(2, '0')}-'
         '${_expiresAt!.day.toString().padLeft(2, '0')}';
@@ -935,13 +1034,15 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
     if (qtyValue == null || qtyValue <= 0) {
       _snack('Please enter a valid quantity'); return;
     }
-    if (_unitController.text.trim().isEmpty) {
-      _snack('Please enter a quantity unit (e.g. kg, L, pieces)'); return;
+    final unit = _selectedUnit ?? _unitController.text.trim();
+    if (unit.isEmpty) {
+      _snack('Please select a unit'); return;
     }
 
     setState(() => _isLoading = true);
     try {
-      final id    = widget.donation['id'] as String;
+      final id    = widget.donation['id']?.toString() ??
+                    widget.donation['_id']?.toString() ?? '';
       final token = AppToken.get();
 
       if (_photoBytes != null) {
@@ -952,7 +1053,7 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
         request.fields['title']         = _titleController.text.trim();
         request.fields['category']      = _selectedCategory!;
         request.fields['totalQuantity'] = qtyValue.toString();
-        request.fields['quantityUnit']  = _unitController.text.trim();
+        request.fields['quantityUnit']  = unit;
         request.fields['pickupAddress'] = _addressController.text.trim();
         request.fields['pickupType']    = _pickupTypes[_pickupTypeKey]!;
         request.fields['isUrgent']      = _isUrgent.toString();
@@ -980,7 +1081,7 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
           'title':         _titleController.text.trim(),
           'category':      _selectedCategory!,
           'totalQuantity': qtyValue,
-          'quantityUnit':  _unitController.text.trim(),
+          'quantityUnit':  unit,
           'pickupAddress': _addressController.text.trim(),
           'pickupType':    _pickupTypes[_pickupTypeKey]!,
           'isUrgent':      _isUrgent,
@@ -992,8 +1093,6 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
         if (_latitude  != null) payload['latitude']  = _latitude;
         if (_longitude != null) payload['longitude'] = _longitude;
 
-        debugPrint('[EditDonation] PUT body: ${jsonEncode(payload)}');
-
         final res = await http.put(
           Uri.parse('$baseUrl/donations/$id'),
           headers: {
@@ -1002,8 +1101,6 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
           },
           body: jsonEncode(payload),
         );
-
-        debugPrint('[EditDonation] PUT ${res.statusCode}: ${res.body}');
 
         if (res.statusCode >= 200 && res.statusCode < 300) {
           if (!mounted) return;
@@ -1049,6 +1146,7 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ── Photo picker
                 GestureDetector(
                   onTap: _pickPhoto,
                   child: Container(
@@ -1087,11 +1185,15 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+
+                // ── Title
                 _label('Title *'),
                 const SizedBox(height: 6),
                 _box(TextField(controller: _titleController,
                     decoration: _deco('Write A Title'))),
                 const SizedBox(height: 14),
+
+                // ── Category
                 _label('Category *'),
                 const SizedBox(height: 6),
                 _box(DropdownButtonFormField<String>(
@@ -1109,11 +1211,11 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                 )),
                 const SizedBox(height: 14),
 
+                // ── Quantity + Unit on one row
                 Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                   Expanded(
-                    flex: 2,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    flex: 3,
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _label('Quantity *'),
                         const SizedBox(height: 6),
@@ -1128,67 +1230,58 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     flex: 2,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _label('Unit *'),
                         const SizedBox(height: 6),
                         _box(DropdownButtonFormField<String>(
-                          value: _units.contains(_unitController.text)
-                              ? _unitController.text
-                              : null,
-                          hint: Text(_unitController.text.isNotEmpty
-                              ? _unitController.text
-                              : 'Unit',
-                              style: const TextStyle(color: kSage, fontSize: 13)),
+                          value: _selectedUnit,
                           decoration: const InputDecoration(
                             border: InputBorder.none, isDense: true,
                             contentPadding: EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 14)),
+                                horizontal: 10, vertical: 14)),
                           items: _units.map((u) => DropdownMenuItem(
-                              value: u, child: Text(u))).toList(),
+                              value: u, child: Text(u,
+                              style: const TextStyle(fontSize: 13)))).toList(),
                           onChanged: (v) {
-                            if (v != null) setState(() => _unitController.text = v);
+                            if (v != null) setState(() {
+                              _selectedUnit = v;
+                              _unitController.text = v;
+                            });
                           },
                         )),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 3,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                ]),
+                const SizedBox(height: 14),
+
+                // ── Expiry date on its own row (no overflow)
+                _label('Expiration Date'),
+                const SizedBox(height: 6),
+                GestureDetector(
+                  onTap: _pickDate,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 13),
+                    decoration: BoxDecoration(color: kWhite,
+                        borderRadius: BorderRadius.circular(10)),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _label('Expiration Date'),
-                        const SizedBox(height: 6),
-                        GestureDetector(
-                          onTap: _pickDate,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 13),
-                            decoration: BoxDecoration(color: kWhite,
-                                borderRadius: BorderRadius.circular(10)),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(child: Text(_expiresAtDisplay,
-                                    style: TextStyle(fontSize: 12,
-                                        color: _expiresAt == null
-                                            ? kSage : Colors.black87),
-                                    overflow: TextOverflow.ellipsis)),
-                                const Icon(Icons.keyboard_arrow_down,
-                                    color: kSage, size: 20),
-                              ],
-                            ),
-                          ),
-                        ),
+                        Text(_expiresAtDisplay,
+                            style: TextStyle(fontSize: 13,
+                                color: _expiresAt == null
+                                    ? kSage : Colors.black87)),
+                        const Icon(Icons.calendar_today_outlined,
+                            color: kSage, size: 18),
                       ],
                     ),
                   ),
-                ]),
-
+                ),
                 const SizedBox(height: 14),
+
+                // ── Urgent toggle
                 Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 10),
@@ -1212,6 +1305,8 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
+
+                // ── Pickup address
                 _label('Pickup Address *'),
                 const SizedBox(height: 6),
                 _box(Padding(
@@ -1252,17 +1347,19 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                         Row(children: [
                           const Icon(Icons.location_on, size: 12, color: kTeal),
                           const SizedBox(width: 4),
-                          Text(
+                          Expanded(child: Text(
                             'lat: ${_latitude!.toStringAsFixed(5)}, '
                             'lng: ${_longitude!.toStringAsFixed(5)}',
                             style: const TextStyle(fontSize: 11, color: kTeal),
-                          ),
+                          )),
                         ]),
                       ],
                     ],
                   ),
                 )),
                 const SizedBox(height: 14),
+
+                // ── Pickup type
                 _label('Pickup Type *'),
                 const SizedBox(height: 8),
                 Row(children: [
@@ -1271,11 +1368,15 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
                   _pickupToggle('Public Place'),
                 ]),
                 const SizedBox(height: 14),
+
+                // ── Description
                 _label('About Your Donation'),
                 const SizedBox(height: 6),
                 _box(TextField(controller: _descriptionController, maxLines: 3,
                     decoration: _deco('Describe Your Donation'))),
                 const SizedBox(height: 28),
+
+                // ── Save button
                 Center(
                   child: SizedBox(
                     width: 200, height: 50,
@@ -1361,3 +1462,4 @@ class _EditDonationScreenState extends State<EditDonationScreen> {
     );
   }
 }
+// Note: home_screen.dart _showConfirmModal fix is in home_screen patch below

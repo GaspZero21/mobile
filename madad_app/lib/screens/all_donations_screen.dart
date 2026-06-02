@@ -4,6 +4,7 @@ import '../services/donation_service.dart';
 import '../services/reservation_service.dart';
 import '../widgets/shared_bottom_nav.dart';
 import '../widgets/quantity_picker_sheet.dart';
+import '../widgets/report_user_sheet.dart';
 
 class AllDonationsScreen extends StatefulWidget {
   const AllDonationsScreen({super.key});
@@ -485,6 +486,30 @@ class _AllDonationsScreenState extends State<AllDonationsScreen> {
                                 fontWeight: FontWeight.bold)),
                       ),
                     ),
+                    // After the Reserve ElevatedButton in the modal:
+const SizedBox(height: 10),
+SizedBox(
+  width: double.infinity,
+  child: OutlinedButton.icon(
+    style: OutlinedButton.styleFrom(
+      side: const BorderSide(color: Colors.red),
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    ),
+    onPressed: () {
+      final donorId = d['donor']?['id']?.toString() ??
+                      d['donor']?['_id']?.toString() ?? '';
+      final donorName = d['donor']?['name'] ?? 'Donor';
+      if (donorId.isNotEmpty) {
+        Navigator.pop(context);
+        showReportUserSheet(context, userId: donorId, userName: donorName);
+      }
+    },
+    icon: const Icon(Icons.flag_outlined, color: Colors.red, size: 16),
+    label: const Text('Report Donor',
+        style: TextStyle(color: Colors.red, fontSize: 13)),
+  ),
+),
                   ],
                 ),
               ),

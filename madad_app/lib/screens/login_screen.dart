@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 import 'forgot_password_screen.dart';
 import '../services/auth_service.dart';
+import '../services/push_notification_service.dart';   // ← ADD
 import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -15,6 +17,14 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController    = TextEditingController();
   final _passwordController = TextEditingController();
   bool _passwordVisible     = false;
+  bool _isLoading           = false;    // ← ADD: show spinner on button
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,6 +72,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     TextField(
                       controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
                       decoration: const InputDecoration(
                         labelText: 'E-Mail Or Phone Number',
                         labelStyle: TextStyle(color: kSage, fontSize: 14),
@@ -115,15 +126,20 @@ class _LoginScreenState extends State<LoginScreen> {
                               borderRadius: BorderRadius.circular(30),
                             ),
                           ),
-                          onPressed: _onSignIn,
-                          child: const Text(
-                            'Sign In',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: kWhite,
-                            ),
-                          ),
+                          onPressed: _isLoading ? null : _onSignIn,
+                          child: _isLoading
+                              ? const SizedBox(
+                                  width: 22, height: 22,
+                                  child: CircularProgressIndicator(
+                                      color: kWhite, strokeWidth: 2.5))
+                              : const Text(
+                                  'Sign In',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: kWhite,
+                                  ),
+                                ),
                         ),
                       ),
                     ),
@@ -170,10 +186,12 @@ class _LoginScreenState extends State<LoginScreen> {
     if (email.isEmpty || password.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please fill all fields")),
+        const SnackBar(content: Text('Please fill all fields')),
       );
       return;
     }
+
+    setState(() => _isLoading = true);
 
     try {
       final response = await AuthService().login(
@@ -182,6 +200,15 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       debugPrint(response.toString());
       if (!mounted) return;
+
+      // ── Register FCM token immediately after login ──────────────────────
+      // This ensures the backend receives the token even on first login,
+      // not just when the app restarts while already logged in.
+      if (!kIsWeb) {
+        await PushNotificationService.init();
+      }
+
+      // ── Navigate to home ────────────────────────────────────────────────
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const HomeScreen()),
@@ -189,8 +216,9 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } catch (e) {
       if (!mounted) return;
+      setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Login failed: $e")),
+        SnackBar(content: Text('Login failed: $e')),
       );
     }
   }
